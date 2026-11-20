@@ -8,6 +8,7 @@ import androidx.work.ForegroundInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.example.discordcleaner.data.DebugLog
 import com.example.discordcleaner.data.Routine
 import com.example.discordcleaner.data.RunRecord
 import com.example.discordcleaner.data.RunStatus
@@ -42,6 +43,7 @@ class RunWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, p
             ?: inputData.getString(K_ROUTINE_ID)?.let { store.routine(it) }
             ?: return Result.success()
         val saved = inputData.getString(K_ROUTINE_ID) != null
+        DebugLog.d("run", "開始 id=$id 保存済み=$saved 自動=$scheduled 範囲=${routine.scope} 対象数=${routine.targets.size} 上限=${routine.maxPerRun}")
         val name = routine.name.ifBlank { "手動削除" }
         title = name
 
@@ -54,7 +56,9 @@ class RunWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, p
             }
         }
 
-        val foreground = try { setForeground(fgInfo("開始待ち", 0, 0)); true } catch (e: Exception) { false }
+        val foreground = try { setForeground(fgInfo("開始待ち", 0, 0)); true } catch (e: Exception) {
+            DebugLog.d("run", "フォアグラウンド化できず(通常ワーカーで実行): ${e.javaClass.simpleName}"); false
+        }
         // フォアグラウンドでなければ通常ワーカーの10分制限に収まるよう区切る
         val deadline = if (foreground) Long.MAX_VALUE else System.currentTimeMillis() + 8 * 60_000L + 30_000L
 
@@ -109,23 +113,27 @@ class RunWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, p
             report(Engine.Progress(Engine.Phase.DELETE, found, 0, 0, 0, cut.size, ""), true)
             val (d, s, f) = engine.delete(cut, routine, found) { p -> report(p) }
             del = d; skip = s; fail = f
+            DebugLog.d("run", "完了 対象=$found 削除=$del スキップ=$skip エラー=$fail")
             val more = cut.size < list.size || (limit > 0 && list.size >= limit)
             val msg = if (more) "残りは次回に削除します" else ""
             record(store, routine, saved, scheduled, started, found, del, skip, fail, RunStatus.DONE, msg)
             Notifications.result(applicationContext, notifId + 1, "$name: ${del}件削除", "${account.name} · スキップ${skip} · エラー${fail}" + if (msg.isNotEmpty()) "\n$msg" else "")
             Result.success(workDataOf(P_PHASE to "DONE", P_FOUND to found, P_DELETED to del, P_SKIPPED to skip, P_FAILED to fail))
         } catch (e: CancellationException) {
+            DebugLog.d("run", "停止 削除=$del")
             withContext(NonCancellable) {
                 record(store, routine, saved, scheduled, started, found, del, skip, fail, RunStatus.STOPPED, "停止しました")
             }
             throw e
         } catch (e: AuthException) {
+            DebugLog.d("run", "認証エラー(要再ログイン)")
             store.markNeedsLogin(account.id, true)
             record(store, routine, saved, scheduled, started, found, del, skip, fail, RunStatus.NEEDS_LOGIN, e.message ?: "")
             notifyNeedsLogin(account.name, name)
             Result.failure(workDataOf(P_PHASE to "ERROR", P_ERROR to (e.message ?: "")))
         } catch (e: Exception) {
             val msg = e.message ?: e.javaClass.simpleName
+            DebugLog.d("run", "エラー ${e.javaClass.simpleName}: $msg")
             record(store, routine, saved, scheduled, started, found, del, skip, fail, RunStatus.ERROR, msg)
             if (scheduled) Notifications.result(applicationContext, notifId + 1, "$name を実行できませんでした", msg)
             Result.failure(workDataOf(P_PHASE to "ERROR", P_ERROR to msg))

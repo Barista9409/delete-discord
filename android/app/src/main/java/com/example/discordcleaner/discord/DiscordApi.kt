@@ -1,5 +1,6 @@
 package com.example.discordcleaner.discord
 
+import com.example.discordcleaner.data.DebugLog
 import com.example.discordcleaner.data.Target
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -113,12 +114,14 @@ class DiscordApi(private val token: String) {
                     val status = conn.responseCode
                     val stream = if (status >= 400) conn.errorStream else conn.inputStream
                     val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
+                    DebugLog.d("api", "$method ${DebugLog.url(path)} → $status" + if (status >= 400) " ${body.take(200)}" else "")
                     return@withContext Resp(status, body)
                 } finally {
                     conn.disconnect()
                 }
             } catch (e: IOException) {
                 lastErr = e
+                DebugLog.d("api", "$method ${DebugLog.url(path)} 通信エラー ${e.javaClass.simpleName}: ${e.message}")
                 delay(2000L * (i + 1))
             }
         }
@@ -127,6 +130,10 @@ class DiscordApi(private val token: String) {
 
     companion object {
         private const val API = "https://discord.com/api/v9"
-        const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        /** PC版ChromeのUA。起動時に端末のWebViewと同じChromeバージョンへ合わせる(App.onCreate)。 */
+        @Volatile var UA = desktopUa("130")
+
+        fun desktopUa(chromeMajor: String) =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/$chromeMajor.0.0.0 Safari/537.36"
     }
 }

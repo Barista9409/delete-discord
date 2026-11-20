@@ -55,6 +55,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.example.discordcleaner.BuildConfig
 import com.example.discordcleaner.data.Account
+import com.example.discordcleaner.data.DebugLog
 import com.example.discordcleaner.discord.DiscordApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -142,23 +143,60 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
     val scope = rememberCoroutineScope()
     var status by remember { mutableStateOf("読み込み中…") }
     var done by remember { mutableStateOf(false) }
+    var mobile by remember { mutableStateOf(false) }
+    var showLog by remember { mutableStateOf(true) }
     val hasAccounts = remember { vm.store.accounts.value.isNotEmpty() }
+    val logLines by DebugLog.lines.collectAsState()
 
     // WebViewは画面を開いた時点で作り、そのまま読み込みを始める
     val wv = remember {
+        DebugLog.d("login", "ログイン画面を開く 再ログイン=${s.relogin} 既存アカウント=$hasAccounts")
         WebView(ctx).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.userAgentString = DiscordApi.UA
+            DebugLog.d("login", "UA(PC): ${DiscordApi.UA}")
             webChromeClient = object : WebChromeClient() {
+                var lastLogged = -1
                 override fun onProgressChanged(view: WebView, newProgress: Int) {
                     if (!done && newProgress < 100) status = "読み込み中… $newProgress%"
                     else if (!done) status = "ログインすると自動で登録されます"
+                    if (newProgress == 100 || newProgress / 50 != lastLogged / 50) {
+                        lastLogged = newProgress; DebugLog.d("web", "進捗 $newProgress%")
+                    }
+                }
+                override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean {
+                    val lv = m.messageLevel()
+                    if (lv == android.webkit.ConsoleMessage.MessageLevel.ERROR || lv == android.webkit.ConsoleMessage.MessageLevel.WARNING) {
+                        DebugLog.d("console", "$lv ${m.message().take(300)} (${DebugLog.url(m.sourceId())}:${m.lineNumber()})")
+                    }
+                    return true
                 }
             }
             webViewClient = object : WebViewClient() {
+                override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                    DebugLog.d("web", "読み込み開始 ${DebugLog.url(url)}")
+                }
+                override fun onPageFinished(view: WebView, url: String?) {
+                    DebugLog.d("web", "読み込み完了 ${DebugLog.url(url)}")
+                }
                 override fun onReceivedError(view: WebView, request: android.webkit.WebResourceRequest, error: android.webkit.WebResourceError) {
-                    if (request.isForMainFrame) status = "読み込みに失敗しました(${error.description})。右上の再読み込みを押してください"
+                    if (request.isForMainFrame) {
+                        status = "読み込みに失敗しました(${error.description})。右上の再読み込みを押してください"
+                        DebugLog.d("web", "エラー(メイン) ${error.errorCode} ${error.description} ${DebugLog.url(request.url.toString())}")
+                    } else DebugLog.d("web", "エラー(部品) ${error.errorCode} ${error.description} ${DebugLog.url(request.url.toString())}")
+                }
+                override fun onReceivedHttpError(view: WebView, request: android.webkit.WebResourceRequest, response: android.webkit.WebResourceResponse) {
+                    DebugLog.d("web", "HTTP ${response.statusCode}${if (request.isForMainFrame) "(メイン)" else ""} ${DebugLog.url(request.url.toString())}")
+                }
+                override fun onReceivedSslError(view: WebView, handler: android.webkit.SslErrorHandler, error: android.net.http.SslError) {
+                    DebugLog.d("web", "SSLエラー ${error.primaryError} ${DebugLog.url(error.url)}")
+                    handler.cancel()
+                }
+                override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                    DebugLog.d("web", "描画プロセス停止 crash=${detail.didCrash()}")
+                    status = "表示が停止しました。戻ってもう一度開いてください"
+                    return true
                 }
             }
         }
@@ -166,29 +204,47 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
 
     Column(Modifier.fillMaxSize()) {
         Bar("Discordにログイン", onBack = { vm.back() }) {
-            TextButton(onClick = { wv.loadUrl(LOGIN_URL) }) { Text("再読み込み") }
+            TextButton(onClick = {
+                mobile = !mobile
+                wv.settings.userAgentString = if (mobile) null else DiscordApi.UA
+                DebugLog.d("login", "表示切替 → ${if (mobile) "スマホ" else "PC"} UA: ${wv.settings.userAgentString}")
+                wv.loadUrl(LOGIN_URL)
+            }) { Text(if (mobile) "PC表示" else "スマホ表示") }
+            TextButton(onClick = { DebugLog.d("login", "再読み込み"); wv.loadUrl(LOGIN_URL) }) { Text("再読込") }
         }
-        Text(status, color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(status, color = C.muted, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            TextButton(onClick = { showLog = !showLog }) { Text(if (showLog) "ログを隠す" else "ログ") }
+        }
         AndroidView(modifier = Modifier.weight(1f).fillMaxWidth(), factory = { wv })
+        if (showLog) Column(Modifier.fillMaxWidth().background(C.surface).padding(8.dp)) {
+            logLines.takeLast(8).forEach {
+                Text(it.substringAfter(' ').substringAfter(' '), fontSize = 10.sp, color = C.muted, maxLines = 2,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+            }
+        }
     }
 
     // ログイン状態になるまで定期的にトークンを確認
     LaunchedEffect(Unit) {
         // 2つ目以降・再ログインは、前のセッションを消し終えてからログイン画面を出す
-        if (hasAccounts || s.relogin) clearWebData()
+        if (hasAccounts || s.relogin) { clearWebData(); DebugLog.d("login", "以前のセッションを消去") }
         wv.loadUrl(LOGIN_URL)
+        var polls = 0
         while (true) {
             delay(1500)
             if (done) continue
+            polls++
+            if (polls % 10 == 1) {
+                val diag = evalJs(wv, DIAG_JS)
+                DebugLog.d("login", "状態#$polls url=${DebugLog.url(wv.url)} ページ=$diag")
+            }
             val host = runCatching { Uri.parse(wv.url ?: "").host }.getOrNull()
             if (host != "discord.com") continue
-            val token = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
-                wv.evaluateJavascript(TOKEN_JS) { res ->
-                    val v = runCatching { JSONTokener(res).nextValue() as? String }.getOrNull()
-                    if (cont.isActive) cont.resume(v)
-                }
-            }
-            if (token != null && !done) {
+            val token = runCatching { JSONTokener(evalJs(wv, TOKEN_JS)).nextValue() as? String }.getOrNull()
+            if (token == null) continue
+            DebugLog.d("login", "トークン検出(長さ ${token.length})")
+            if (!done) {
                 done = true
                 status = "確認中…"
                 scope.launch {
@@ -197,11 +253,13 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
                     val res = vm.registerToken(token, allowExisting = s.relogin || !hasAccounts, known = known)
                     val a = res.getOrNull()
                     if (a != null) {
+                        DebugLog.d("login", "登録成功 ${a.name}")
                         status = "${a.name} を登録しました"
                         clearWebData()
                         vm.back()
                     } else {
                         val e = res.exceptionOrNull()
+                        DebugLog.d("login", "登録失敗 ${e?.javaClass?.simpleName}: ${e?.message}")
                         if (e is AlreadyRegistered) {
                             status = "${e.name} は登録済みです。別のアカウントでログインしてください"
                             clearWebData(); wv.loadUrl(LOGIN_URL)
@@ -214,6 +272,23 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
     }
     DisposableEffect(Unit) { onDispose { wv.stopLoading(); wv.destroy() } }
 }
+
+private suspend fun evalJs(wv: WebView, js: String): String? =
+    kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+        wv.evaluateJavascript(js) { res -> if (cont.isActive) cont.resume(res) }
+    }
+
+/** 真っ白などの原因調査用: ページの状態(トークンは含めない)。 */
+private const val DIAG_JS = """
+(function(){try{
+  return JSON.stringify({ready:document.readyState,title:document.title,
+    bodyLen:document.body?document.body.innerHTML.length:-1,
+    text:(document.body?document.body.innerText:'').slice(0,80),
+    chunks:Object.keys(window).filter(function(k){return k.indexOf('webpackChunk')===0}).length,
+    ls:(function(){try{return !!localStorage.getItem('token')}catch(e){return 'err'}})(),
+    w:innerWidth,h:innerHeight});
+}catch(e){return 'diag error: '+e}})()
+"""
 
 private const val LOGIN_URL = "https://discord.com/login"
 
@@ -284,6 +359,8 @@ fun SettingsScreen(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -
             Panel {
                 NavRow("更新を確認", "v${BuildConfig.VERSION_NAME}", checkUpdate)
                 HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                NavRow("診断ログ", "不具合の調査用", { vm.push(Screen.Logs) })
+                HorizontalDivider(Modifier.padding(vertical = 6.dp))
                 NavRow("履歴を消去", "", { clearAsk = true })
             }
             Caption("ユーザートークンによる自動操作はDiscordの利用規約に反する可能性があり、アカウント停止のリスクがあります。上限件数と間隔は控えめにしてください。")
@@ -305,4 +382,36 @@ fun SettingsScreen(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -
         confirmButton = { TextButton(onClick = { vm.store.clearRuns(); clearAsk = false }) { Text("消去", color = C.danger) } },
         dismissButton = { TextButton(onClick = { clearAsk = false }) { Text("やめる") } },
     )
+}
+
+// ------------------------------------------------------------ 診断ログ
+
+@Composable
+fun LogsScreen(vm: AppViewModel) {
+    val ctx = LocalContext.current
+    val lines by DebugLog.lines.collectAsState()
+    var copied by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize()) {
+        Bar("診断ログ", onBack = { vm.back() }) {
+            TextButton(onClick = {
+                val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("診断ログ", DebugLog.text()))
+                copied = true
+            }) { Text(if (copied) "コピー済" else "コピー") }
+            TextButton(onClick = {
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, DebugLog.text())
+                ctx.startActivity(Intent.createChooser(send, "診断ログを共有"))
+            }) { Text("共有") }
+            TextButton(onClick = { DebugLog.clear() }) { Text("消去") }
+        }
+        Caption("トークンは記録しません(トークンらしき文字列は自動で伏せ字にします)。端末の外には自動で送信されません。", Modifier.padding(horizontal = 16.dp))
+        androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 6.dp)) {
+            items(lines.size) { i ->
+                val l = lines[lines.size - 1 - i]   // 新しい順
+                Text(l, fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    color = if ("エラー" in l || "ERROR" in l || "失敗" in l) C.danger else C.fg,
+                    modifier = Modifier.padding(vertical = 2.dp))
+            }
+        }
+    }
 }
