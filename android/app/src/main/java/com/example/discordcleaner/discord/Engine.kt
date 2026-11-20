@@ -59,8 +59,11 @@ class Engine(private val api: DiscordApi, private val meId: String) {
                 total += page.optInt("total_results")
                 val msgs = hits(page)
                 msgs.firstOrNull()?.let { m -> val ts = ts(m); if (oldest == null || ts < oldest!!) oldest = ts }
-                if (preview.size < 3) msgs.filter { deletable(it, r) }.take(3 - preview.size).forEach {
-                    preview += Preview(t.name, ts(it), it.optString("content").ifEmpty { "(添付ファイルなど)" }.take(80))
+                if (preview.size < PREVIEW_MAX) msgs.filter { deletable(it, r) }.take(PREVIEW_MAX - preview.size).forEach {
+                    val body = it.optString("content")
+                    val att = it.optJSONArray("attachments")?.length() ?: 0
+                    val txt = when { body.isNotEmpty() -> body; att > 0 -> "📎 添付ファイル${att}件"; else -> "(本文なし)" }
+                    preview += Preview(t.name, ts(it), txt.take(140))
                 }
             }
             if (i < targets.size - 1) delay(700)
@@ -146,6 +149,7 @@ class Engine(private val api: DiscordApi, private val meId: String) {
     private fun ts(m: JSONObject): Long = snowflakeMs(m.optString("id"))
 
     companion object {
+        const val PREVIEW_MAX = 40
         const val DAY = 24L * 3600 * 1000
         private const val EPOCH = 1420070400000L
         fun snowflake(ms: Long): String = ((ms - EPOCH).coerceAtLeast(0) shl 22).toString()
