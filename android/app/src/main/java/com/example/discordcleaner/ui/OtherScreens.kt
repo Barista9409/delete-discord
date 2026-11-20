@@ -18,6 +18,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -475,13 +476,21 @@ fun LogsScreen(vm: AppViewModel) {
 
 // ------------------------------------------------------------ ブラウザ(ログイン後のDiscord画面)
 
-private class BrowserCtl { var token: String? = null; var injected = false }
+private class BrowserCtl { var token: String? = null; var injected = false; var zoom = 100 }
 
 /** 保存済みトークンでログイン状態にするJS。iframe経由のlocalStorageに入れて反映する(Discordは直接のlocalStorageを封じているため)。 */
 private fun browserLoginJs(token: String): String =
     "(function(){try{var i=document.createElement('iframe');document.body.appendChild(i);" +
     "i.contentWindow.localStorage.token='\"'+'" + token + "'+'\"';i.remove();}catch(e){}" +
     "location.replace('https://discord.com/channels/@me');})();"
+
+private fun zoomJs(pct: Int) = "try{document.documentElement.style.zoom='" + (pct / 100.0) + "'}catch(e){}"
+
+/** 表示倍率をCSSで即時に変える(Discordのviewport設定に左右されず、指定%どおりになる)。 */
+private fun applyZoom(wv: WebView, pct: Int) {
+    (wv.tag as? BrowserCtl)?.zoom = pct
+    wv.evaluateJavascript(zoomJs(pct), null)
+}
 
 @SuppressLint("SetJavaScriptEnabled")
 private fun createBrowserWebView(appCtx: android.content.Context): WebView {
@@ -497,19 +506,19 @@ private fun createBrowserWebView(appCtx: android.content.Context): WebView {
         settings.mediaPlaybackRequiresUserGesture = false
         settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
         settings.userAgentString = DiscordApi.browserUA
-        settings.setSupportZoom(true)
-        settings.builtInZoomControls = true
-        settings.displayZoomControls = false
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
         webChromeClient = WebChromeClient()
         webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String?) {
                 val host = runCatching { Uri.parse(url ?: "").host }.getOrNull() ?: return
-                if ((host == "discord.com" || host.endsWith(".discord.com")) && !ctl.injected && ctl.token != null) {
+                if (host != "discord.com" && !host.endsWith(".discord.com")) return
+                if (!ctl.injected && ctl.token != null) {
                     ctl.injected = true
                     view.evaluateJavascript(browserLoginJs(ctl.token!!), null)
+                    return
                 }
+                if (ctl.zoom != 100) view.evaluateJavascript(zoomJs(ctl.zoom), null) // 再読み込み後も倍率を保つ
             }
         }
     }
@@ -520,6 +529,16 @@ private fun loadBrowser(wv: WebView, token: String?) {
     wv.loadUrl("https://discord.com/app")
 }
 
+private fun setImmersive(activity: android.app.Activity?, on: Boolean) {
+    activity ?: return
+    val c = androidx.core.view.WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+    val bars = androidx.core.view.WindowInsetsCompat.Type.systemBars()
+    if (on) {
+        c.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        c.hide(bars)
+    } else c.show(bars)
+}
+
 @Composable
 fun BrowserScreen(vm: AppViewModel, onAccounts: () -> Unit) {
     val ctx = LocalContext.current
@@ -527,58 +546,71 @@ fun BrowserScreen(vm: AppViewModel, onAccounts: () -> Unit) {
     vm.store.currentAccountId.collectAsState().value
     vm.store.accounts.collectAsState().value
     val acct = vm.currentAccount()
-    var zoom by remember { mutableStateOf(100) }
-    var landscape by remember { mutableStateOf(false) }
-
-    Column(Modifier.fillMaxSize()) {
-        Bar("ブラウザ") {
-            if (acct != null) {
-                AccountChip(acct, onAccounts)
-                TextButton(onClick = { vm.browserWeb?.reload() }) { Text("更新") }
-            }
-        }
-        if (acct == null) {
+    if (acct == null) {
+        Column(Modifier.fillMaxSize()) {
+            Bar("ブラウザ")
             Panel(Modifier.padding(16.dp)) { Text("アカウントを追加するとDiscordを開けます", color = C.muted) }
-            return@Column
         }
-        val wv = remember { vm.browserWeb ?: createBrowserWebView(ctx.applicationContext).also { vm.browserWeb = it } }
-        LaunchedEffect(acct.id) {
-            if (vm.browserAccount != acct.id) {
-                vm.browserAccount = acct.id
-                loadBrowser(wv, vm.store.tokens.get(acct.id))
-            }
-        }
-        // 画面の向き: このタブにいる間だけ適用し、離れたら元に戻す
-        LaunchedEffect(landscape) {
-            activity?.requestedOrientation =
-                if (landscape) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
-        DisposableEffect(Unit) {
-            onDispose { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
-        }
-
-        // 操作バー: 表示倍率(− % +)と 画面回転
-        Row(
-            Modifier.fillMaxWidth().background(C.surface).padding(horizontal = 12.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("表示", color = C.muted, fontSize = 12.sp)
-            TextButton(onClick = {
-                val n = (zoom - 20).coerceAtLeast(50); if (n != zoom) { wv.zoomBy(n / zoom.toFloat()); zoom = n }
-            }) { Text("−", fontSize = 20.sp) }
-            Text("$zoom%", fontSize = 13.sp, modifier = Modifier.width(44.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            TextButton(onClick = {
-                val n = (zoom + 20).coerceAtMost(250); if (n != zoom) { wv.zoomBy(n / zoom.toFloat()); zoom = n }
-            }) { Text("＋", fontSize = 20.sp) }
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = { landscape = !landscape }) { Text(if (landscape) "縦向き" else "横向き") }
-        }
-
-        AndroidView(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            factory = { (wv.parent as? android.view.ViewGroup)?.removeView(wv); wv },
-        )
-        BackHandler(enabled = true) { if (wv.canGoBack()) wv.goBack() }
+        return
     }
+    var zoom by remember { mutableStateOf((vm.browserWeb?.tag as? BrowserCtl)?.zoom ?: 100) }
+    var landscape by remember { mutableStateOf(false) }
+    val wv = remember { vm.browserWeb ?: createBrowserWebView(ctx.applicationContext).also { vm.browserWeb = it } }
+
+    LaunchedEffect(acct.id) {
+        if (vm.browserAccount != acct.id) {
+            vm.browserAccount = acct.id
+            loadBrowser(wv, vm.store.tokens.get(acct.id))
+        }
+    }
+    // 横向き = 全画面(システムバーもアプリのバーも隠す)。タブを離れたら元に戻す。
+    LaunchedEffect(landscape) {
+        activity?.requestedOrientation =
+            if (landscape) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        vm.immersive = landscape
+        setImmersive(activity, landscape)
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            vm.immersive = false
+            setImmersive(activity, false)
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            if (!landscape) {
+                Bar("ブラウザ") {
+                    AccountChip(acct, onAccounts)
+                    TextButton(onClick = { vm.browserWeb?.reload() }) { Text("更新") }
+                }
+                Row(
+                    Modifier.fillMaxWidth().background(C.surface).padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("表示倍率", color = C.muted, fontSize = 12.sp)
+                    TextButton(onClick = { val n = (zoom - 10).coerceAtLeast(50); if (n != zoom) { zoom = n; applyZoom(wv, n) } }) { Text("−", fontSize = 20.sp) }
+                    Text("$zoom%", fontSize = 13.sp, modifier = Modifier.width(48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    TextButton(onClick = { val n = (zoom + 10).coerceAtMost(250); if (n != zoom) { zoom = n; applyZoom(wv, n) } }) { Text("＋", fontSize = 20.sp) }
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { landscape = true }) { Text("横向き") }
+                }
+            }
+            AndroidView(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                factory = { (wv.parent as? android.view.ViewGroup)?.removeView(wv); wv },
+            )
+        }
+        if (landscape) {
+            // 全画面中に縦向きへ戻す小さなボタン
+            TextButton(
+                onClick = { landscape = false },
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                    .background(C.surface.copy(alpha = 0.85f), androidx.compose.foundation.shape.CircleShape),
+            ) { Text("縦", color = C.fg) }
+        }
+    }
+    BackHandler(enabled = true) { if (landscape) landscape = false else if (wv.canGoBack()) wv.goBack() }
 }
