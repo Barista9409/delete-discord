@@ -160,10 +160,18 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
     // WebViewは画面を開いた時点で作り、そのまま読み込みを始める
     val wv = remember {
         DebugLog.d("login", "ログイン画面を開く 再ログイン=${s.relogin} 既存アカウント=$hasAccounts")
+        WebView.setWebContentsDebuggingEnabled(true) // PCのchrome://inspectで中身を見られるように
         WebView(ctx).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            settings.databaseEnabled = true
+            settings.javaScriptCanOpenWindowsAutomatically = true
+            settings.mediaPlaybackRequiresUserGesture = false
+            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             settings.userAgentString = DiscordApi.UA
+            // Discordはクッキーが無いとログインページを描画できない(空白になる)ことがある
+            CookieManager.getInstance().setAcceptCookie(true)
+            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
             DebugLog.d("login", "UA(PC): ${DiscordApi.UA}")
             webChromeClient = object : WebChromeClient() {
                 var lastLogged = -1
@@ -274,7 +282,7 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
             delay(1500)
             if (done) continue
             polls++
-            if (polls % 10 == 1) {
+            if (polls <= 15 || polls % 10 == 1) {
                 val diag = evalJs(wv, DIAG_JS)
                 DebugLog.d("login", "状態#$polls url=${DebugLog.url(wv.url)} ページ=$diag")
             }
@@ -317,12 +325,14 @@ private suspend fun evalJs(wv: WebView, js: String): String? =
 /** 真っ白などの原因調査用: ページの状態(トークンは含めない)。 */
 private const val DIAG_JS = """
 (function(){try{
+  var mount=function(){try{var m=document.getElementById('app-mount');return m?m.childElementCount:-2;}catch(e){return 'e';}}();
+  var note=function(){try{var t=document.body?document.body.innerText:'';return /unsupported|not supported|cookie|javascript|サポート|対応/i.test(t)?t.slice(0,120):'';}catch(e){return '';}}();
   return JSON.stringify({ready:document.readyState,title:document.title,
-    bodyLen:document.body?document.body.innerHTML.length:-1,
-    text:(document.body?document.body.innerText:'').slice(0,80),
+    bodyLen:document.body?document.body.innerHTML.length:-1,mount:mount,
+    text:(document.body?document.body.innerText:'').replace(/\s+/g,' ').slice(0,60),
     chunks:Object.keys(window).filter(function(k){return k.indexOf('webpackChunk')===0}).length,
     ls:(function(){try{return !!localStorage.getItem('token')}catch(e){return 'err'}})(),
-    w:innerWidth,h:innerHeight});
+    ck:(document.cookie||'').length,note:note,w:innerWidth,h:innerHeight});
 }catch(e){return 'diag error: '+e}})()
 """
 
