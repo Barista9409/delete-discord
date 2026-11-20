@@ -151,7 +151,7 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
     val scope = rememberCoroutineScope()
     var status by remember { mutableStateOf("読み込み中…") }
     var done by remember { mutableStateOf(false) }
-    var mobile by remember { mutableStateOf(false) }
+    var pc by remember { mutableStateOf(false) }
     var showLog by remember { mutableStateOf(true) }
     val hasAccounts = remember { vm.store.accounts.value.isNotEmpty() }
     val logLines by DebugLog.lines.collectAsState()
@@ -168,16 +168,16 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
             settings.javaScriptCanOpenWindowsAutomatically = true
             settings.mediaPlaybackRequiresUserGesture = false
             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-            settings.userAgentString = DiscordApi.UA
+            settings.userAgentString = DiscordApi.browserUA  // 端末の実際のChrome(モバイル)を名乗る
             // Discordはクッキーが無いとログインページを描画できない(空白になる)ことがある
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-            DebugLog.d("login", "UA(PC): ${DiscordApi.UA}")
+            DebugLog.d("login", "UA(Chrome): ${DiscordApi.browserUA}")
             webChromeClient = object : WebChromeClient() {
                 var lastLogged = -1
                 override fun onProgressChanged(view: WebView, newProgress: Int) {
                     if (!done && newProgress < 100) status = "読み込み中… $newProgress%"
-                    else if (!done) status = "ログインすると自動で登録されます"
+                    else if (!done) status = "ログイン画面の表示に10〜20秒かかることがあります"
                     if (newProgress == 100 || newProgress / 50 != lastLogged / 50) {
                         lastLogged = newProgress; DebugLog.d("web", "進捗 $newProgress%")
                     }
@@ -252,11 +252,11 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
         Bar("Discordにログイン", onBack = { vm.back() }) {
             TextButton(onClick = { manualOpen = true }) { Text("手動入力") }
             TextButton(onClick = {
-                mobile = !mobile
-                wv.settings.userAgentString = if (mobile) null else DiscordApi.UA
-                DebugLog.d("login", "表示切替 → ${if (mobile) "スマホ" else "PC"} UA: ${wv.settings.userAgentString}")
+                pc = !pc
+                wv.settings.userAgentString = if (pc) DiscordApi.UA else DiscordApi.browserUA
+                DebugLog.d("login", "表示切替 → ${if (pc) "PC" else "Chrome"} UA: ${wv.settings.userAgentString}")
                 wv.loadUrl(LOGIN_URL)
-            }) { Text(if (mobile) "PC表示" else "スマホ表示") }
+            }) { Text(if (pc) "Chrome表示" else "PC表示") }
             TextButton(onClick = { DebugLog.d("login", "再読み込み"); wv.loadUrl(LOGIN_URL) }) { Text("再読込") }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {

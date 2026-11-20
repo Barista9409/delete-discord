@@ -133,6 +133,9 @@ class DiscordApi(private val token: String) {
         /** PC版ChromeのUA。起動時に端末のWebViewと同じChromeバージョンへ合わせる(App.onCreate)。 */
         @Volatile var UA = desktopUa("130")
 
+        /** ログイン用: 端末の実際のChrome(モバイル)を名乗る。App起動時に端末UAから作る。 */
+        @Volatile var browserUA = desktopUa("130")
+
         fun desktopUa(chromeMajor: String) =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/$chromeMajor.0.0.0 Safari/537.36"
     }
