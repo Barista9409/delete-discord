@@ -162,6 +162,11 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
         DebugLog.d("login", "ログイン画面を開く 再ログイン=${s.relogin} 既存アカウント=$hasAccounts")
         WebView.setWebContentsDebuggingEnabled(true) // PCのchrome://inspectで中身を見られるように
         WebView(ctx).apply {
+            // 中身はあるのに画面が真っ暗/真っ白になるのを防ぐ: サイズと背景を明示し、ハードウェア描画にする
+            layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+            setBackgroundColor(android.graphics.Color.WHITE)
+            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.databaseEnabled = true
