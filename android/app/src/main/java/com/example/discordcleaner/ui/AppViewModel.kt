@@ -40,6 +40,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ブラウザタブのWebView(タブを切り替えても保持する)
     var browserWeb: WebView? = null
     var browserAccount: String? = null
+    var immersive by mutableStateOf(false)  // ブラウザ全画面中は下タブ等を隠す
 
     override fun onCleared() {
         browserWeb?.destroy(); browserWeb = null

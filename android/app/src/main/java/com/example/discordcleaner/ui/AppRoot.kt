@@ -37,7 +37,7 @@ fun AppRoot(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -> Unit)
     Scaffold(
         containerColor = C.bg,
         bottomBar = {
-            if (isTab) NavigationBar(containerColor = C.surface) {
+            if (isTab && !vm.immersive) NavigationBar(containerColor = C.surface) {
                 NavigationBarItem(s is Screen.Home, { vm.tab(Screen.Home) }, { Icon(Icons.Default.Home, null) }, label = { Text("ホーム") })
                 NavigationBarItem(s is Screen.Routines, { vm.tab(Screen.Routines) }, { Icon(Icons.AutoMirrored.Filled.List, null) }, label = { Text("ルーチン") })
                 NavigationBarItem(s is Screen.Browser, { vm.tab(Screen.Browser) }, { Icon(painterResource(R.drawable.ic_tab_browser), null, modifier = Modifier.size(24.dp)) }, label = { Text("ブラウザ") })
