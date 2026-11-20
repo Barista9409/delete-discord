@@ -14,7 +14,10 @@ class App : Application() {
         runCatching {
             val def = android.webkit.WebSettings.getDefaultUserAgent(this)
             Regex("""Chrome/(\d+)""").find(def)?.groupValues?.get(1)?.let { DiscordApi.UA = DiscordApi.desktopUa(it) }
+            // 端末の実際のChrome(モバイル)を名乗る: WebView印の "; wv" と "Version/4.0 " を外す
+            DiscordApi.browserUA = def.replace("; wv)", ")").replace("Version/4.0 ", "")
             DebugLog.d("app", "既定UA: $def")
+            DebugLog.d("app", "Chrome風UA: ${DiscordApi.browserUA}")
         }.onFailure { DebugLog.d("app", "UA取得失敗: ${it.message}") }
         Notifications.createChannels(this)
         Scheduler.ensureTicker(this)
