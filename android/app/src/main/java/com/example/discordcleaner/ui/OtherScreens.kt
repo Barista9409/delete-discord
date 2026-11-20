@@ -373,7 +373,7 @@ fun SettingsScreen(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -
     }
 
     Column(Modifier.fillMaxSize()) {
-        Bar("設定", onBack = { vm.back() })
+        Bar("設定")
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SectionLabel("アカウント")
             Panel {
@@ -407,13 +407,18 @@ fun SettingsScreen(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -
                 Caption("最適化の対象外にすると、決まった時刻に実行されやすくなり、長い削除も途中で止まりにくくなります。")
             }
 
+            SectionLabel("履歴")
+            Panel {
+                NavRow("履歴を見る", "削除の記録", { vm.push(Screen.History) })
+                HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                NavRow("履歴を消去", "", { clearAsk = true })
+            }
+
             SectionLabel("アプリ")
             Panel {
                 NavRow("更新を確認", "v${BuildConfig.VERSION_NAME}", checkUpdate)
                 HorizontalDivider(Modifier.padding(vertical = 6.dp))
                 NavRow("診断ログ", "不具合の調査用", { vm.push(Screen.Logs) })
-                HorizontalDivider(Modifier.padding(vertical = 6.dp))
-                NavRow("履歴を消去", "", { clearAsk = true })
             }
             Caption("ユーザートークンによる自動操作はDiscordの利用規約に反する可能性があり、アカウント停止のリスクがあります。上限件数と間隔は控えめにしてください。")
             Spacer(Modifier.height(16.dp))
@@ -492,6 +497,9 @@ private fun createBrowserWebView(appCtx: android.content.Context): WebView {
         settings.mediaPlaybackRequiresUserGesture = false
         settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
         settings.userAgentString = DiscordApi.browserUA
+        settings.setSupportZoom(true)
+        settings.builtInZoomControls = true
+        settings.displayZoomControls = false
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
         webChromeClient = WebChromeClient()
@@ -515,9 +523,13 @@ private fun loadBrowser(wv: WebView, token: String?) {
 @Composable
 fun BrowserScreen(vm: AppViewModel, onAccounts: () -> Unit) {
     val ctx = LocalContext.current
+    val activity = ctx as? android.app.Activity
     vm.store.currentAccountId.collectAsState().value
     vm.store.accounts.collectAsState().value
     val acct = vm.currentAccount()
+    var zoom by remember { mutableStateOf(100) }
+    var landscape by remember { mutableStateOf(false) }
+
     Column(Modifier.fillMaxSize()) {
         Bar("ブラウザ") {
             if (acct != null) {
@@ -536,6 +548,33 @@ fun BrowserScreen(vm: AppViewModel, onAccounts: () -> Unit) {
                 loadBrowser(wv, vm.store.tokens.get(acct.id))
             }
         }
+        // 画面の向き: このタブにいる間だけ適用し、離れたら元に戻す
+        LaunchedEffect(landscape) {
+            activity?.requestedOrientation =
+                if (landscape) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+        DisposableEffect(Unit) {
+            onDispose { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        }
+
+        // 操作バー: 表示倍率(− % +)と 画面回転
+        Row(
+            Modifier.fillMaxWidth().background(C.surface).padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("表示", color = C.muted, fontSize = 12.sp)
+            TextButton(onClick = {
+                val n = (zoom - 20).coerceAtLeast(50); if (n != zoom) { wv.zoomBy(n / zoom.toFloat()); zoom = n }
+            }) { Text("−", fontSize = 20.sp) }
+            Text("$zoom%", fontSize = 13.sp, modifier = Modifier.width(44.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            TextButton(onClick = {
+                val n = (zoom + 20).coerceAtMost(250); if (n != zoom) { wv.zoomBy(n / zoom.toFloat()); zoom = n }
+            }) { Text("＋", fontSize = 20.sp) }
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = { landscape = !landscape }) { Text(if (landscape) "縦向き" else "横向き") }
+        }
+
         AndroidView(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             factory = { (wv.parent as? android.view.ViewGroup)?.removeView(wv); wv },

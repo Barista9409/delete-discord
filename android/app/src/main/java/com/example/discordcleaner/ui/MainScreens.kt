@@ -72,7 +72,6 @@ fun HomeScreen(vm: AppViewModel, onAccounts: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Bar("ホーム") {
             if (accounts.isNotEmpty()) AccountChip(acct, onAccounts)
-            IconButton(onClick = { vm.push(Screen.Settings) }) { Icon(Icons.Default.Settings, "設定") }
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (acct == null) {
@@ -306,7 +305,7 @@ fun HistoryScreen(vm: AppViewModel) {
     val runs by vm.store.runs.collectAsState()
     val accounts by vm.store.accounts.collectAsState()
     Column(Modifier.fillMaxSize()) {
-        Bar("履歴")
+        Bar("履歴", onBack = { vm.back() })
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (runs.isEmpty()) item { Panel { Text("まだ実行していません", color = C.muted) } }
             items(runs, key = { it.id }) { h ->

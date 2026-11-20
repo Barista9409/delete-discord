@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -20,6 +21,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.painterResource
 import com.example.discordcleaner.R
 
@@ -27,7 +30,7 @@ import com.example.discordcleaner.R
 fun AppRoot(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -> Unit) {
     var sheet by remember { mutableStateOf(false) }
     val s = vm.screen
-    val isTab = s is Screen.Home || s is Screen.Routines || s is Screen.Browser || s is Screen.History
+    val isTab = s is Screen.Home || s is Screen.Routines || s is Screen.Browser || s is Screen.Settings
     BackHandler(enabled = vm.stack.size > 1) {
         if (s is Screen.Wizard && s.step > 0) { vm.cancelCount(); vm.replace(s.copy(step = s.step - 1)) } else vm.back()
     }
@@ -37,8 +40,8 @@ fun AppRoot(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -> Unit)
             if (isTab) NavigationBar(containerColor = C.surface) {
                 NavigationBarItem(s is Screen.Home, { vm.tab(Screen.Home) }, { Icon(Icons.Default.Home, null) }, label = { Text("ホーム") })
                 NavigationBarItem(s is Screen.Routines, { vm.tab(Screen.Routines) }, { Icon(Icons.AutoMirrored.Filled.List, null) }, label = { Text("ルーチン") })
-                NavigationBarItem(s is Screen.Browser, { vm.tab(Screen.Browser) }, { Icon(painterResource(R.drawable.ic_launcher_monochrome), null) }, label = { Text("ブラウザ") })
-                NavigationBarItem(s is Screen.History, { vm.tab(Screen.History) }, { Icon(Icons.Default.DateRange, null) }, label = { Text("履歴") })
+                NavigationBarItem(s is Screen.Browser, { vm.tab(Screen.Browser) }, { Icon(painterResource(R.drawable.ic_tab_browser), null, modifier = Modifier.size(24.dp)) }, label = { Text("ブラウザ") })
+                NavigationBarItem(s is Screen.Settings, { vm.tab(Screen.Settings) }, { Icon(Icons.Default.Settings, null) }, label = { Text("設定") })
             }
         },
     ) { pad ->
