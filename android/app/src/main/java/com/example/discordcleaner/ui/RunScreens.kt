@@ -90,19 +90,25 @@ private fun ConfirmBody(vm: AppViewModel, r: com.example.discordcleaner.data.Rou
             }
         }
     }
-    c.result?.preview?.takeIf { it.isNotEmpty() }?.let { pv ->
-        Spacer(Modifier.height(10.dp))
-        SectionLabel("最初に消える発言")
-        Panel {
-            pv.forEachIndexed { i, p ->
-                if (i > 0) HorizontalDivider(Modifier.padding(vertical = 6.dp))
-                Caption("${p.where} · ${Engine.dateStr(p.timestamp)}")
-                Text(p.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    c.result?.let { res ->
+        res.preview.takeIf { it.isNotEmpty() }?.let { pv ->
+            Spacer(Modifier.height(10.dp))
+            SectionLabel("消える発言(古い順・プレビュー ${pv.size}件)")
+            Panel {
+                pv.forEachIndexed { i, p ->
+                    if (i > 0) HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                    Caption("${p.where} · ${Engine.dateStr(p.timestamp)}")
+                    Text(p.text, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+                if (res.total > pv.size) {
+                    HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                    Caption("ほか ${res.total - pv.size} 件 — 削除時はすべてが対象です")
+                }
             }
         }
     }
     Spacer(Modifier.height(10.dp))
-    Caption("件数はDiscordの検索結果による目安です。システムメッセージなど削除できないものは実行時にスキップします。")
+    Caption("プレビューは古い順の先頭サンプルです。件数はDiscordの検索結果による目安で、システムメッセージなど削除できないものは実行時にスキップします。")
 }
 
 @Composable
