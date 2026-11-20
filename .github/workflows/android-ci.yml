@@ -1,0 +1,32 @@
+# 作業ブランチへのpushでテストビルド(署名なし・Secrets不使用)。コンパイルが通るかの確認用。
+name: Android CI
+
+on:
+  push:
+    branches-ignore: [main]
+    paths: ['android/**', 'app/assets/**', '.github/workflows/android-ci.yml']
+  pull_request:
+    paths: ['android/**', 'app/assets/**']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - run: node --check app/assets/inject.js
+      - run: gradle -p android assembleRelease -PvCode=1 -PvName=0.0 --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          retention-days: 3
