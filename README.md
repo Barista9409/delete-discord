@@ -5,7 +5,7 @@
 > ⚠️ ユーザートークンを使う自動操作はDiscord利用規約(セルフボット禁止)に抵触し、アカウント停止のリスクがあります。自己責任で、少量・低頻度で使ってください。
 
 ## 構成
-- `android/` — Androidアプリ本体(Kotlin / Jetpack Compose、パッケージ `com.example.discordcleaner`)
+- `android/` — Androidアプリ本体(Kotlin / Jetpack Compose、アプリID `com.dcleaner.app`。v2.0以前の `com.example.discordcleaner` とは別アプリ)
 - `userscript/` — Tampermonkey版(`.user.js`)と単体HTML版
 - `tools/` — 旧CLI版、APKのバージョン読み取りツール
 - `releases/` — 署名済みAPK

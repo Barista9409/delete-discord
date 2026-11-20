@@ -9,6 +9,7 @@
 - 取得はログイン画面のWebViewで `evaluateJavascript`(webpackの getToken → localStorage.token)。JSブリッジは使わない。取得後はWebViewのCookie等を消す(サーバー側ログアウトはしない=トークンは有効のまま)。
 
 ## 構造(android/、Kotlin + Jetpack Compose)
+- **アプリID(applicationId)は `com.dcleaner.app`(v2.1〜)**。旧 `com.example.discordcleaner` とは別アプリ。コードのnamespaceは `com.example.discordcleaner` のまま。applicationIdを変えると別アプリ扱いになりデータも引き継がれないので、今後は変えないこと。
 - `data/` Models(Account / Routine / RunRecord)、Store(filesDir のJSON、StateFlow)、TokenVault
 - `discord/` DiscordApi(REST v9、429はretry_after待ち、202は再試行)、Engine(スキャン→削除)
 - `work/` RunWorker(1回分の実行、手動・スケジュール共通)、Scheduler(15分ごとの見回りワーカーが予定時刻を過ぎたルーチンを起動)、Notifications
