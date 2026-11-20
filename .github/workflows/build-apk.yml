@@ -1,0 +1,118 @@
+# inject.js を差し替えたAPKを、Secretsの署名キーで再署名して releases/ とGitHub Releaseに出す。
+# 必要なSecrets: KEYSTORE_BASE64(.jksをbase64化したもの), KSPASS(store/key共通パスワード)
+# 手動実行のみ(フォークやPRからは動かない = Secretsが外に出ない)。
+name: Build APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: 'README のバージョン履歴に書く変更内容'
+        required: true
+        default: 'inject.js更新'
+      vname:
+        description: 'versionName(空なら自動で +0.1。前回と同じ文字数のみ)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-apk
+  cancel-in-progress: false
+
+env:
+  SIGNER_URL: https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+  SIGNER_SHA256: e1299fd6fcf4da527dd53735b56127e8ea922a321128123b9c32d619bba1d835
+  # 署名証明書のSHA-256(v1.2と同じキーであることの確認用。違うと上書きインストールできない)
+  CERT_SHA256: 64fc94438039114589b11c465d1b4b91b8e9edf559fec59036a5af0f16db7205
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Syntax check inject.js
+        run: node --check app/assets/inject.js
+
+      - name: Download uber-apk-signer
+        run: |
+          curl -sSL -o uber-apk-signer.jar "$SIGNER_URL"
+          echo "$SIGNER_SHA256  uber-apk-signer.jar" | sha256sum -c -
+
+      - name: Decide version
+        id: ver
+        env:
+          IN_VNAME: ${{ inputs.vname }}
+        run: |
+          BASE=$(ls releases/*_v*.apk | sort -V | tail -1)
+          W=$(mktemp -d); unzip -q "$BASE" AndroidManifest.xml -d "$W"
+          read CUR_CODE CUR_NAME < <(python3 tools/patch_manifest_version.py "$W/AndroidManifest.xml")
+          VCODE=$((CUR_CODE + 1))
+          if [ -n "$IN_VNAME" ]; then VNAME="$IN_VNAME"; else
+            VNAME=$(python3 -c "import sys;a=sys.argv[1].split('.');a[-1]=str(int(a[-1])+1);print('.'.join(a))" "$CUR_NAME")
+          fi
+          if [ ${#VNAME} -ne ${#CUR_NAME} ]; then
+            echo "::error::versionName は ${#CUR_NAME} 文字のみ ($CUR_NAME -> $VNAME 不可)。APKの再生成が必要です。"; exit 1
+          fi
+          OUT="releases/discode_message_cleaner_v${VNAME}.apk"
+          [ -e "$OUT" ] && { echo "::error::$OUT は既に存在します"; exit 1; }
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "vcode=$VCODE" >> "$GITHUB_OUTPUT"
+          echo "vname=$VNAME" >> "$GITHUB_OUTPUT"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+          echo "base=$BASE ($CUR_CODE/$CUR_NAME) -> $VCODE/$VNAME"
+
+      - name: Build and sign
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KSPASS: ${{ secrets.KSPASS }}
+          VCODE: ${{ steps.ver.outputs.vcode }}
+          VNAME: ${{ steps.ver.outputs.vname }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KSPASS" ]; then
+            echo "::error::Secrets KEYSTORE_BASE64 / KSPASS が未登録です"; exit 1
+          fi
+          KS="$RUNNER_TEMP/cleaner.jks"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$KS"
+          KS="$KS" ./build_apk.sh "${{ steps.ver.outputs.base }}" "${{ steps.ver.outputs.out }}"
+          rm -f "$KS"
+
+      - name: Verify signature key
+        run: |
+          java -jar uber-apk-signer.jar -a "${{ steps.ver.outputs.out }}" --onlyVerify | tee verify.log
+          grep -qi "SHA256: $CERT_SHA256" verify.log || { echo "::error::署名キーがv1.2と一致しません"; exit 1; }
+
+      - name: Update README and commit
+        env:
+          NOTES: ${{ inputs.notes }}
+          VNAME: ${{ steps.ver.outputs.vname }}
+          VCODE: ${{ steps.ver.outputs.vcode }}
+        run: |
+          python3 - <<'EOF'
+          import os
+          p = 'README.md'; s = open(p, encoding='utf-8').read()
+          line = f"- v{os.environ['VNAME']}: {os.environ['NOTES']}(versionCode {os.environ['VCODE']})\n"
+          s = s.replace('## バージョン\n', '## バージョン\n' + line, 1)
+          open(p, 'w', encoding='utf-8').write(s)
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md "${{ steps.ver.outputs.out }}"
+          git commit -m "Release v${VNAME} (versionCode ${VCODE})"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          gh release create "v${{ steps.ver.outputs.vname }}" "${{ steps.ver.outputs.out }}" \
+            --target "$(git rev-parse HEAD)" --title "v${{ steps.ver.outputs.vname }}" --notes "$NOTES"

@@ -16,6 +16,7 @@
 - 「確認のみ」チェックは仕様上削除済み。復活させない。
 
 ## APKの更新手順(ログイン保持の鍵)
+**基本はGitHub Actions「Build APK」(`.github/workflows/build-apk.yml`)を手動実行するだけ。** Secrets `KEYSTORE_BASE64`/`KSPASS` で署名し、versionCode+1・versionName+0.1を自動決定、署名キー一致を検証、`releases/`とREADMEにコミット、GitHub Releaseも作成する。以下は手元で行う場合の手順。
 1. `app/assets/inject.js` を編集し `node --check` で構文確認。
 2. `VCODE=<前回+1> VNAME=<同じ文字数> KS=<jks> KSPASS=<pw> ./build_apk.sh releases/<最新>.apk <出力>.apk`
    (uber-apk-signer.jar を作業ディレクトリに置く。GitHub releasesから取得可。パスワードは本人から受け取る)
