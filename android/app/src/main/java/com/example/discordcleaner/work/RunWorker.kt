@@ -37,7 +37,8 @@ class RunWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, p
     override suspend fun doWork(): Result {
         val store = Store.get(applicationContext)
         val scheduled = inputData.getBoolean(K_SCHEDULED, false)
-        val routine = inputData.getString(K_ROUTINE_JSON)?.let { Routine.fromJson(JSONObject(it)) }
+        val adhoc = inputData.getString(K_ADHOC_FILE)?.let { adhocFile(applicationContext, it) }
+        val routine = adhoc?.takeIf { it.exists() }?.let { Routine.fromJson(JSONObject(it.readText())) }
             ?: inputData.getString(K_ROUTINE_ID)?.let { store.routine(it) }
             ?: return Result.success()
         val saved = inputData.getString(K_ROUTINE_ID) != null
@@ -58,7 +59,11 @@ class RunWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, p
         val deadline = if (foreground) Long.MAX_VALUE else System.currentTimeMillis() + 8 * 60_000L + 30_000L
 
         setProgress(workDataOf(P_PHASE to "WAIT"))
-        return runLock.withLock { execute(store, routine, saved, scheduled, name, foreground, deadline) }
+        try {
+            return runLock.withLock { execute(store, routine, saved, scheduled, name, foreground, deadline) }
+        } finally {
+            adhoc?.delete()
+        }
     }
 
     private suspend fun execute(
@@ -158,12 +163,14 @@ class RunWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, p
     companion object {
         const val TAG = "run"
         const val K_ROUTINE_ID = "routineId"
-        const val K_ROUTINE_JSON = "routineJson"
+        const val K_ADHOC_FILE = "adhocFile"
         const val K_SCHEDULED = "scheduled"
         const val K_PLANNED = "plannedAt"
         const val P_PHASE = "phase"; const val P_FOUND = "found"; const val P_DELETED = "deleted"
         const val P_SKIPPED = "skipped"; const val P_FAILED = "failed"; const val P_TOTAL = "total"
         const val P_CURRENT = "current"; const val P_NAME = "name"; const val P_ACCOUNT = "account"; const val P_ERROR = "error"
         private val runLock = Mutex()
+
+        fun adhocFile(ctx: Context, name: String) = java.io.File(java.io.File(ctx.filesDir, "adhoc"), name.substringAfterLast('/'))
     }
 }

@@ -127,10 +127,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun api(accountId: String): DiscordApi? = store.tokens.get(accountId)?.let { DiscordApi(it) }
 
     /** ログイン画面で取得したトークンを検証して登録する。 */
-    suspend fun registerToken(token: String): Result<Account> = runCatching {
+    suspend fun registerToken(token: String, allowExisting: Boolean, known: Set<String>): Result<Account> = runCatching {
         val me = DiscordApi(token).me()
         val id = me.getString("id")
         val display = me.optString("global_name").takeIf { it.isNotEmpty() && it != "null" } ?: me.optString("username")
+        if (!allowExisting && id in known) throw AlreadyRegistered(display)
         val existing = store.account(id)
         val acct = Account(id, display, existing?.colorIdx ?: (store.accounts.value.size % C.avatars.size), needsLogin = false)
         store.upsertAccount(acct, token)

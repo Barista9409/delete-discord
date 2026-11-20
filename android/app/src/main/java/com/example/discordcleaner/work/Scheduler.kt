@@ -72,11 +72,14 @@ object Scheduler {
 
     /** 今すぐ実行(手動)。ルーチン未保存でも routine を丸ごと渡せる。 */
     fun runNow(context: Context, r: Routine, saved: Boolean): UUID {
+        // 保存していないルーチンはファイル経由で渡す(WorkManagerの入力データは10KBまで)
+        val input = if (saved) workDataOf(RunWorker.K_ROUTINE_ID to r.id) else {
+            val f = RunWorker.adhocFile(context, UUID.randomUUID().toString())
+            f.parentFile?.mkdirs(); f.writeText(r.toJson().toString())
+            workDataOf(RunWorker.K_ADHOC_FILE to f.name)
+        }
         val req = OneTimeWorkRequestBuilder<RunWorker>()
-            .setInputData(
-                if (saved) workDataOf(RunWorker.K_ROUTINE_ID to r.id)
-                else workDataOf(RunWorker.K_ROUTINE_JSON to r.toJson().toString())
-            )
+            .setInputData(input)
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .addTag(RunWorker.TAG)
             .build()

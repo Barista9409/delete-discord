@@ -150,15 +150,12 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
         AndroidView(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             factory = { ctx ->
-                // 2つ目以降は前のアカウントのセッションを消してからログイン画面を出す
-                if (hasAccounts || s.relogin) clearWebData()
                 WebView(ctx).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.userAgentString = DiscordApi.UA
                     webChromeClient = WebChromeClient()
                     webViewClient = WebViewClient()
-                    loadUrl("https://discord.com/login")
                     webView = this
                 }
             },
@@ -168,8 +165,12 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
     // ログイン状態になるまで定期的にトークンを確認
     LaunchedEffect(webView) {
         val wv = webView ?: return@LaunchedEffect
-        while (!done) {
+        // 2つ目以降・再ログインは、前のセッションを消し終えてからログイン画面を出す
+        if (hasAccounts || s.relogin) clearWebData()
+        wv.loadUrl("https://discord.com/login")
+        while (true) {
             delay(1500)
+            if (done) continue
             val host = runCatching { Uri.parse(wv.url ?: "").host }.getOrNull()
             if (host != "discord.com") continue
             val token = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
@@ -182,12 +183,20 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
                 done = true
                 status = "確認中…"
                 scope.launch {
-                    vm.registerToken(token).onSuccess { a ->
+                    // 追加のつもりで既存アカウントのセッションが残っていた場合は登録しない
+                    val known = vm.store.accounts.value.map { it.id }.toSet()
+                    val res = vm.registerToken(token, allowExisting = s.relogin || !hasAccounts, known = known)
+                    val a = res.getOrNull()
+                    if (a != null) {
                         status = "${a.name} を登録しました"
                         clearWebData()
                         vm.back()
-                    }.onFailure {
-                        status = "ログイン情報を確認できませんでした。もう一度ログインしてください"
+                    } else {
+                        val e = res.exceptionOrNull()
+                        if (e is AlreadyRegistered) {
+                            status = "${e.name} は登録済みです。別のアカウントでログインしてください"
+                            clearWebData(); wv.loadUrl("https://discord.com/login")
+                        } else status = "ログイン情報を確認できませんでした。もう一度ログインしてください"
                         done = false
                     }
                 }
@@ -197,11 +206,17 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
     DisposableEffect(Unit) { onDispose { webView?.destroy() } }
 }
 
-private fun clearWebData() {
-    CookieManager.getInstance().removeAllCookies(null)
-    CookieManager.getInstance().flush()
+/** WebViewのCookieと保存データを消す(Cookieの削除完了まで待つ)。サーバー側のログアウトはしない。 */
+private suspend fun clearWebData() {
     WebStorage.getInstance().deleteAllData()
+    kotlinx.coroutines.suspendCancellableCoroutine<Unit> { cont ->
+        CookieManager.getInstance().removeAllCookies { if (cont.isActive) cont.resume(Unit) }
+    }
+    CookieManager.getInstance().flush()
+    delay(300)
 }
+
+class AlreadyRegistered(val name: String) : Exception("already registered")
 
 // ------------------------------------------------------------ 設定
 

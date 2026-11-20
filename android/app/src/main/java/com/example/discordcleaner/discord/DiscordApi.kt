@@ -50,7 +50,8 @@ class DiscordApi(private val token: String) {
 
     /** メッセージ検索。202(インデックス作成中)と429は待って再試行する。 */
     suspend fun search(t: Target, params: Map<String, String>): JSONObject {
-        val q = params.entries.joinToString("&") { "${it.key}=${URLEncoder.encode(it.value, "UTF-8")}" }
+        val all = if (t.isGuild) params + ("include_nsfw" to "true") else params
+        val q = all.entries.joinToString("&") { "${it.key}=${URLEncoder.encode(it.value, "UTF-8")}" }
         val path = if (t.isGuild) "/guilds/${t.id}/messages/search?$q" else "/channels/${t.id}/messages/search?$q"
         repeat(8) {
             val r = call("GET", path)

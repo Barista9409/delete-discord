@@ -36,10 +36,9 @@ class Engine(private val api: DiscordApi, private val meId: String) {
     }
 
     fun params(r: Routine, now: Long = System.currentTimeMillis()): MutableMap<String, String> {
-        val p = linkedMapOf("author_id" to meId, "sort_by" to "timestamp", "sort_order" to "asc", "include_nsfw" to "true")
+        val p = linkedMapOf("author_id" to meId, "sort_by" to "timestamp", "sort_order" to "asc")
         if (r.keyword.isNotBlank()) p["content"] = r.keyword.trim()
         when (r.kind) { Kind.FILE -> p["has"] = "file"; Kind.LINK -> p["has"] = "link"; Kind.ALL -> {} }
-        if (r.keepPinned) p["pinned"] = "false"
         val maxMs = r.olderThanDays?.let { now - it * DAY } ?: r.toDate?.let { it + DAY - 1 }
         val minMs = if (r.olderThanDays == null) r.fromDate else null
         maxMs?.let { p["max_id"] = snowflake(it) }
