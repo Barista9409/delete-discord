@@ -14,6 +14,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -464,5 +465,81 @@ fun LogsScreen(vm: AppViewModel) {
                     modifier = Modifier.padding(vertical = 2.dp))
             }
         }
+    }
+}
+
+// ------------------------------------------------------------ ブラウザ(ログイン後のDiscord画面)
+
+private class BrowserCtl { var token: String? = null; var injected = false }
+
+/** 保存済みトークンでログイン状態にするJS。iframe経由のlocalStorageに入れて反映する(Discordは直接のlocalStorageを封じているため)。 */
+private fun browserLoginJs(token: String): String =
+    "(function(){try{var i=document.createElement('iframe');document.body.appendChild(i);" +
+    "i.contentWindow.localStorage.token='\"'+'" + token + "'+'\"';i.remove();}catch(e){}" +
+    "location.replace('https://discord.com/channels/@me');})();"
+
+@SuppressLint("SetJavaScriptEnabled")
+private fun createBrowserWebView(appCtx: android.content.Context): WebView {
+    val ctl = BrowserCtl()
+    return WebView(appCtx).apply {
+        tag = ctl
+        layoutParams = android.view.ViewGroup.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+        setBackgroundColor(android.graphics.Color.WHITE)
+        settings.javaScriptEnabled = true
+        settings.domStorageEnabled = true
+        settings.databaseEnabled = true
+        settings.mediaPlaybackRequiresUserGesture = false
+        settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+        settings.userAgentString = DiscordApi.browserUA
+        CookieManager.getInstance().setAcceptCookie(true)
+        CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+        webChromeClient = WebChromeClient()
+        webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String?) {
+                val host = runCatching { Uri.parse(url ?: "").host }.getOrNull() ?: return
+                if ((host == "discord.com" || host.endsWith(".discord.com")) && !ctl.injected && ctl.token != null) {
+                    ctl.injected = true
+                    view.evaluateJavascript(browserLoginJs(ctl.token!!), null)
+                }
+            }
+        }
+    }
+}
+
+private fun loadBrowser(wv: WebView, token: String?) {
+    (wv.tag as? BrowserCtl)?.let { it.token = token; it.injected = false }
+    wv.loadUrl("https://discord.com/app")
+}
+
+@Composable
+fun BrowserScreen(vm: AppViewModel, onAccounts: () -> Unit) {
+    val ctx = LocalContext.current
+    vm.store.currentAccountId.collectAsState().value
+    vm.store.accounts.collectAsState().value
+    val acct = vm.currentAccount()
+    Column(Modifier.fillMaxSize()) {
+        Bar("ブラウザ") {
+            if (acct != null) {
+                AccountChip(acct, onAccounts)
+                TextButton(onClick = { vm.browserWeb?.reload() }) { Text("更新") }
+            }
+        }
+        if (acct == null) {
+            Panel(Modifier.padding(16.dp)) { Text("アカウントを追加するとDiscordを開けます", color = C.muted) }
+            return@Column
+        }
+        val wv = remember { vm.browserWeb ?: createBrowserWebView(ctx.applicationContext).also { vm.browserWeb = it } }
+        LaunchedEffect(acct.id) {
+            if (vm.browserAccount != acct.id) {
+                vm.browserAccount = acct.id
+                loadBrowser(wv, vm.store.tokens.get(acct.id))
+            }
+        }
+        AndroidView(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            factory = { (wv.parent as? android.view.ViewGroup)?.removeView(wv); wv },
+        )
+        BackHandler(enabled = true) { if (wv.canGoBack()) wv.goBack() }
     }
 }

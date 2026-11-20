@@ -20,12 +20,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import com.example.discordcleaner.R
 
 @Composable
 fun AppRoot(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -> Unit) {
     var sheet by remember { mutableStateOf(false) }
     val s = vm.screen
-    val isTab = s is Screen.Home || s is Screen.Routines || s is Screen.History
+    val isTab = s is Screen.Home || s is Screen.Routines || s is Screen.Browser || s is Screen.History
     BackHandler(enabled = vm.stack.size > 1) {
         if (s is Screen.Wizard && s.step > 0) { vm.cancelCount(); vm.replace(s.copy(step = s.step - 1)) } else vm.back()
     }
@@ -35,6 +37,7 @@ fun AppRoot(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -> Unit)
             if (isTab) NavigationBar(containerColor = C.surface) {
                 NavigationBarItem(s is Screen.Home, { vm.tab(Screen.Home) }, { Icon(Icons.Default.Home, null) }, label = { Text("ホーム") })
                 NavigationBarItem(s is Screen.Routines, { vm.tab(Screen.Routines) }, { Icon(Icons.AutoMirrored.Filled.List, null) }, label = { Text("ルーチン") })
+                NavigationBarItem(s is Screen.Browser, { vm.tab(Screen.Browser) }, { Icon(painterResource(R.drawable.ic_launcher_monochrome), null) }, label = { Text("ブラウザ") })
                 NavigationBarItem(s is Screen.History, { vm.tab(Screen.History) }, { Icon(Icons.Default.DateRange, null) }, label = { Text("履歴") })
             }
         },
@@ -44,6 +47,7 @@ fun AppRoot(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -> Unit)
                 when (s) {
                     Screen.Home -> HomeScreen(vm) { sheet = true }
                     Screen.Routines -> RoutinesScreen(vm) { sheet = true }
+                    Screen.Browser -> BrowserScreen(vm) { sheet = true }
                     Screen.History -> HistoryScreen(vm)
                     Screen.Settings -> SettingsScreen(vm, requestNotif, checkUpdate)
                     is Screen.Wizard -> WizardScreen(vm, s)
