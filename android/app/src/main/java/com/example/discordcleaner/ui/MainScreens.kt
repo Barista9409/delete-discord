@@ -51,6 +51,9 @@ import androidx.compose.ui.unit.sp
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.example.discordcleaner.data.Pace
+import com.example.discordcleaner.data.RunRecord
+import com.example.discordcleaner.data.Account
+import androidx.compose.foundation.clickable
 import com.example.discordcleaner.data.Repeat
 import com.example.discordcleaner.data.Routine
 import com.example.discordcleaner.data.RunStatus
@@ -59,22 +62,19 @@ import com.example.discordcleaner.work.RunWorker
 // ------------------------------------------------------------ ホーム
 
 @Composable
-fun HomeScreen(vm: AppViewModel, onAccounts: () -> Unit) {
+fun HomeScreen(vm: AppViewModel) {
     val accounts by vm.store.accounts.collectAsState()
     val routines by vm.store.routines.collectAsState()
     val runs by vm.store.runs.collectAsState()
-    vm.store.currentAccountId.collectAsState().value
-    val acct = vm.currentAccount()
     val ctx = LocalContext.current
     val works by remember { WorkManager.getInstance(ctx).getWorkInfosByTagFlow(RunWorker.TAG) }.collectAsState(initial = emptyList())
     val running = works.firstOrNull { it.state == WorkInfo.State.RUNNING }
 
     Column(Modifier.fillMaxSize()) {
-        Bar("ホーム") {
-            if (accounts.isNotEmpty()) AccountChip(acct, onAccounts)
-        }
+        Bar("ホーム")
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (acct == null) {
+            if (accounts.isEmpty()) {
+                Spacer(Modifier.height(4.dp))
                 Panel {
                     Text("はじめに", fontWeight = FontWeight.Bold, fontSize = 17.sp)
                     Spacer(Modifier.height(4.dp))
@@ -84,100 +84,108 @@ fun HomeScreen(vm: AppViewModel, onAccounts: () -> Unit) {
                 }
                 return@Column
             }
-            if (acct.needsLogin) Panel(onClick = { vm.push(Screen.Login(relogin = true)) }) {
-                Text("${acct.name} のログインが切れています", color = C.danger, fontWeight = FontWeight.Bold)
-                Caption("タップして再ログインしてください。それまでこのアカウントのルーチンは実行されません。")
-            }
             if (running != null) Panel(onClick = { vm.push(Screen.Running(running.id)) }) {
                 val p = running.progress
                 Text("実行中: ${p.getString(RunWorker.P_NAME) ?: "削除"}", fontWeight = FontWeight.Bold)
-                Caption("${p.getInt(RunWorker.P_DELETED, 0)}件削除 · タップで詳細")
+                Caption("${p.getString(RunWorker.P_ACCOUNT) ?: ""} · ${p.getInt(RunWorker.P_DELETED, 0)}件削除 · タップで詳細")
             }
-
-            val mine = routines.filter { it.accountId == acct.id }
-            val next = mine.filter { it.isScheduled && it.nextRunAt != null }.minByOrNull { it.nextRunAt!! }
-            Panel {
-                Caption("次の自動実行")
-                if (next == null) {
-                    Text("予定はありません", fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Caption("ルーチンでスケジュールを設定すると、自動で古い発言を消せます。")
-                } else Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(Labels.whenText(next.nextRunAt!!) + " 頃", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        Text(next.name, color = C.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    Switch(checked = next.enabled, onCheckedChange = { vm.setEnabled(next, it) })
-                }
+            accounts.forEach { acct ->
+                AccountHomeCard(vm, acct, routines.filter { it.accountId == acct.id }, runs.firstOrNull { it.accountId == acct.id })
             }
-
-            BigButton("今すぐ削除する", {
-                vm.push(Screen.Wizard(Routine(accountId = acct.id, olderThanDays = null, maxPerRun = 0)))
-            })
-
-            if (mine.isNotEmpty()) Panel {
-                Caption("よく使うルーチン")
-                mine.take(4).forEachIndexed { i, r ->
-                    if (i > 0) HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(r.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Caption(Labels.schedule(r) + " · " + Labels.condition(r).substringBefore(" · "))
-                        }
-                        TextButton(onClick = { vm.runNow(r, saved = true) }) { Icon(Icons.Default.PlayArrow, null); Text("実行") }
-                    }
-                }
-            }
-
-            runs.firstOrNull { it.accountId == acct.id }?.let { last ->
-                Panel(onClick = { vm.tab(Screen.History) }) {
-                    Caption("前回の実行 · ${Labels.whenText(last.startedAt)}")
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text("${last.deleted}", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = C.mint)
-                        Text("  件削除 · ${Labels.status(last.status)} · ${Labels.duration(last.endedAt - last.startedAt)}", color = C.muted, fontSize = 13.sp)
-                    }
-                }
-            }
+            SubButton("アカウントを追加", { vm.push(Screen.Login(relogin = false)) })
             Spacer(Modifier.height(8.dp))
         }
     }
 }
 
-// ------------------------------------------------------------ ルーチン一覧
+@Composable
+private fun AccountHomeCard(vm: AppViewModel, acct: Account, mine: List<Routine>, last: RunRecord?) {
+    val next = mine.filter { it.isScheduled && it.nextRunAt != null }.minByOrNull { it.nextRunAt!! }
+    Panel {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Avatar(acct, 30.dp)
+            Spacer(Modifier.width(10.dp))
+            Text(acct.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (acct.needsLogin) TextButton(onClick = { vm.store.setCurrent(acct.id); vm.push(Screen.Login(relogin = true)) }) { Text("再ログイン", color = C.danger) }
+        }
+        if (acct.needsLogin) Caption("ログインが切れています。再ログインするまで自動実行されません。")
+        Spacer(Modifier.height(8.dp))
+        if (next != null) Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Caption("次の自動実行")
+                Text(Labels.whenText(next.nextRunAt!!) + " 頃", fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text(next.name, color = C.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Switch(checked = next.enabled, onCheckedChange = { vm.setEnabled(next, it) })
+        } else Caption("自動実行の予定はありません")
+        last?.let {
+            Spacer(Modifier.height(6.dp))
+            Caption("前回 ${Labels.whenText(it.startedAt)} · ${it.deleted}件削除 · ${Labels.status(it.status)}")
+        }
+        Spacer(Modifier.height(12.dp))
+        BigButton("今すぐ削除", { vm.push(Screen.Wizard(Routine(accountId = acct.id, olderThanDays = null, maxPerRun = 0))) })
+        if (mine.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            Caption("ルーチン")
+            mine.take(4).forEach { r ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { vm.push(Screen.EditRoutine(r, isNew = false)) }.padding(vertical = 4.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(r.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Caption(Labels.schedule(r) + " · " + Labels.condition(r).substringBefore(" · "))
+                    }
+                    TextButton(onClick = { vm.runNow(r, saved = true) }) { Icon(Icons.Default.PlayArrow, null); Text("実行") }
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------ ルーチン一覧(全アカウント)
 
 @Composable
-fun RoutinesScreen(vm: AppViewModel, onAccounts: () -> Unit) {
+fun RoutinesScreen(vm: AppViewModel) {
+    val accounts by vm.store.accounts.collectAsState()
     val routines by vm.store.routines.collectAsState()
-    vm.store.currentAccountId.collectAsState().value
-    vm.store.accounts.collectAsState().value
-    val acct = vm.currentAccount()
-    val mine = routines.filter { it.accountId == acct?.id }
     Column(Modifier.fillMaxSize()) {
-        Bar("ルーチン") { if (acct != null) AccountChip(acct, onAccounts) }
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (mine.isEmpty()) item {
-                Panel {
-                    Text("ルーチンはまだありません", fontWeight = FontWeight.Bold)
-                    Caption("よく使う削除の条件を保存して、ワンタップや決まった時間に実行できます。例: 毎日3時に30日より古い発言を消す")
-                }
+        Bar("ルーチン")
+        if (accounts.isEmpty()) {
+            Column(Modifier.padding(16.dp)) {
+                Panel { Text("アカウントを追加するとルーチンを作れます", color = C.muted) }
             }
-            items(mine, key = { it.id }) { r ->
-                Panel(onClick = { vm.push(Screen.EditRoutine(r, isNew = false)) }) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(r.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Caption(Labels.target(r) + " · " + Labels.condition(r))
-                            Caption(Labels.schedule(r) + (if (r.isScheduled && r.nextRunAt != null) " · 次回 ${Labels.whenText(r.nextRunAt)}" else ""))
-                        }
-                        if (r.schedule.repeat != Repeat.MANUAL) Switch(checked = r.enabled, onCheckedChange = { vm.setEnabled(r, it) })
+        } else LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            accounts.forEach { acct ->
+                val mine = routines.filter { it.accountId == acct.id }
+                item(key = "head-${acct.id}") {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 2.dp)) {
+                        Avatar(acct, 24.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(acct.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { vm.push(Screen.EditRoutine(Routine(accountId = acct.id), isNew = true)) }) { Text("＋ 追加") }
                     }
-                    TextButton(onClick = { vm.runNow(r, saved = true) }) { Icon(Icons.Default.PlayArrow, null); Text("今すぐ実行") }
                 }
+                if (mine.isEmpty()) item(key = "empty-${acct.id}") { Caption("ルーチンなし", Modifier.padding(start = 4.dp, bottom = 4.dp)) }
+                items(mine, key = { it.id }) { r -> RoutineCard(vm, r) }
             }
-            item { Spacer(Modifier.height(4.dp)) }
+            item { Spacer(Modifier.height(16.dp)) }
         }
-        if (acct != null) Column(Modifier.padding(16.dp)) {
-            BigButton("新しいルーチン", { vm.push(Screen.EditRoutine(Routine(accountId = acct.id), isNew = true)) })
+    }
+}
+
+@Composable
+private fun RoutineCard(vm: AppViewModel, r: Routine) {
+    Panel(onClick = { vm.push(Screen.EditRoutine(r, isNew = false)) }) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(r.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Caption(Labels.target(r) + " · " + Labels.condition(r))
+                Caption(Labels.schedule(r) + (if (r.isScheduled && r.nextRunAt != null) " · 次回 ${Labels.whenText(r.nextRunAt)}" else ""))
+            }
+            if (r.schedule.repeat != Repeat.MANUAL) Switch(checked = r.enabled, onCheckedChange = { vm.setEnabled(r, it) })
         }
+        TextButton(onClick = { vm.runNow(r, saved = true) }) { Icon(Icons.Default.PlayArrow, null); Text("今すぐ実行") }
     }
 }
 
