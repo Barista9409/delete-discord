@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 13以降のテーマアイコン用(単色) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <group android:pivotX="55" android:pivotY="50" android:scaleX="0.74" android:scaleY="0.74"
+        android:translateX="-1" android:translateY="4">
+        <path android:fillColor="#FF000000"
+            android:pathData="M30,34h40a10,10 0,0 1,10 10v18a10,10 0,0 1,-10 10H50l-12,10v-10h-8a10,10 0,0 1,-10 -10V44a10,10 0,0 1,10 -10z M32.5,46a2.5,2.5 0,0 0,0 5h29a2.5,2.5 0,0 0,0 -5z M32.5,56a2.5,2.5 0,0 0,0 5h17a2.5,2.5 0,0 0,0 -5z"
+            android:fillType="evenOdd" />
+        <path android:fillColor="#FF000000" android:pathData="M70,20h6v6h-6z M80,28h5v5h-5z M86,18h4v4h-4z M78,40h4v4h-4z" />
+    </group>
+</vector>

@@ -1,4 +1,4 @@
-# android/(Kotlin)と app/assets/inject.js からAPKをビルドし、Secretsの署名キーで署名して releases/ とGitHub Releaseに出す。
+# android/(Kotlin)からAPKをビルドし、Secretsの署名キーで署名して releases/ とGitHub Releaseに出す。
 # アプリは起動時に GitHub Releases の最新版を確認して自動更新する。
 # 必要なSecrets: KEYSTORE_BASE64(.jksをbase64化したもの), KSPASS(store/key共通パスワード)
 # 手動実行のみ(フォークやPRからは動かない = Secretsが外に出ない)。
@@ -41,9 +41,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.14.3'
-
-      - name: Syntax check inject.js
-        run: node --check app/assets/inject.js
 
       - name: Decide version
         id: ver

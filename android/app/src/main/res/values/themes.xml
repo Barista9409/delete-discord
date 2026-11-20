@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.DiscordCleaner" parent="Theme.AppCompat.NoActionBar">
-        <item name="colorPrimary">@color/toolbar</item>
-        <item name="colorPrimaryDark">@color/toolbar</item>
-        <item name="android:statusBarColor">@color/toolbar</item>
-        <item name="android:windowBackground">@color/toolbar</item>
+        <item name="colorPrimary">#FF6C7BFF</item>
+        <item name="colorAccent">#FF6C7BFF</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="android:windowBackground">@color/bg</item>
     </style>
 </resources>

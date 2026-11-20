@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 案A: 吹き出しが粒になって消える。セーフゾーン(直径66dp)に収まるよう縮小 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FFF1F1F2"
-        android:pathData="M54,18 C71,18 84,29 84,45 C84,58 76,67 65,70 L65,82 L54,72 L48,72 C34,72 24,60 24,45 C24,29 37,18 54,18 Z" />
-    <path android:fillColor="#FF48484C" android:pathData="M40,42 m-7,0 a7,9 0 1,0 14,0 a7,9 0 1,0 -14,0" />
-    <path android:fillColor="#FF48484C" android:pathData="M68,42 m-7,0 a7,9 0 1,0 14,0 a7,9 0 1,0 -14,0" />
-    <path android:pathData="M18,90 L90,16" android:strokeColor="#FFF1F1F2" android:strokeWidth="17" android:strokeLineCap="round" />
-    <path android:pathData="M18,90 L90,16" android:strokeColor="#FF3A3A3D" android:strokeWidth="10" android:strokeLineCap="round" />
+    <group android:pivotX="55" android:pivotY="50" android:scaleX="0.74" android:scaleY="0.74"
+        android:translateX="-1" android:translateY="4">
+        <path android:fillColor="#FFF2F4FB"
+            android:pathData="M30,34h40a10,10 0,0 1,10 10v18a10,10 0,0 1,-10 10H50l-12,10v-10h-8a10,10 0,0 1,-10 -10V44a10,10 0,0 1,10 -10z" />
+        <path android:fillColor="#FF5EE6B0" android:pathData="M32.5,46h29a2.5,2.5 0,0 1,0 5h-29a2.5,2.5 0,0 1,0 -5z" />
+        <path android:fillColor="#FFC9CEDE" android:pathData="M32.5,56h17a2.5,2.5 0,0 1,0 5h-17a2.5,2.5 0,0 1,0 -5z" />
+        <path android:fillColor="#E65EE6B0" android:pathData="M70,20h6v6h-6z" />
+        <path android:fillColor="#B35EE6B0" android:pathData="M80,28h5v5h-5z" />
+        <path android:fillColor="#805EE6B0" android:pathData="M86,18h4v4h-4z" />
+        <path android:fillColor="#8C5EE6B0" android:pathData="M78,40h4v4h-4z" />
+    </group>
 </vector>
