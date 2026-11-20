@@ -115,6 +115,7 @@ object Scheduler {
                 val due = r.nextRunAt
                 if (due == null) { store.upsertRoutine(prepare(r, now)); continue }
                 if (due <= now) {
+                    com.example.discordcleaner.data.DebugLog.d("sched", "予定時刻到来: ${r.name}")
                     enqueueScheduled(applicationContext, r, due)
                     store.upsertRoutine(r.copy(nextRunAt = nextRun(r.schedule, now)))
                 }

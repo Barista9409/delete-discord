@@ -50,6 +50,7 @@ fun AppRoot(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -> Unit)
                     is Screen.Running -> RunningScreen(vm, s)
                     is Screen.EditRoutine -> RoutineEditScreen(vm, s, requestNotif)
                     is Screen.Login -> LoginScreen(vm, s)
+                    Screen.Logs -> LogsScreen(vm)
                 }
             }
         }

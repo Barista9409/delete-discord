@@ -29,6 +29,7 @@ sealed interface Screen {
     data class Running(val workId: UUID) : Screen
     data class EditRoutine(val routine: Routine, val isNew: Boolean) : Screen
     data class Login(val relogin: Boolean) : Screen
+    data object Logs : Screen
 }
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
