@@ -138,36 +138,45 @@ private const val TOKEN_JS = """
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
+    val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var status by remember { mutableStateOf("ログインすると自動で登録されます") }
-    var webView by remember { mutableStateOf<WebView?>(null) }
+    var status by remember { mutableStateOf("読み込み中…") }
     var done by remember { mutableStateOf(false) }
     val hasAccounts = remember { vm.store.accounts.value.isNotEmpty() }
 
-    Column(Modifier.fillMaxSize()) {
-        Bar("Discordにログイン", onBack = { vm.back() })
-        Text(status, color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-        AndroidView(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            factory = { ctx ->
-                WebView(ctx).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.userAgentString = DiscordApi.UA
-                    webChromeClient = WebChromeClient()
-                    webViewClient = WebViewClient()
-                    webView = this
+    // WebViewは画面を開いた時点で作り、そのまま読み込みを始める
+    val wv = remember {
+        WebView(ctx).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.userAgentString = DiscordApi.UA
+            webChromeClient = object : WebChromeClient() {
+                override fun onProgressChanged(view: WebView, newProgress: Int) {
+                    if (!done && newProgress < 100) status = "読み込み中… $newProgress%"
+                    else if (!done) status = "ログインすると自動で登録されます"
                 }
-            },
-        )
+            }
+            webViewClient = object : WebViewClient() {
+                override fun onReceivedError(view: WebView, request: android.webkit.WebResourceRequest, error: android.webkit.WebResourceError) {
+                    if (request.isForMainFrame) status = "読み込みに失敗しました(${error.description})。右上の再読み込みを押してください"
+                }
+            }
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        Bar("Discordにログイン", onBack = { vm.back() }) {
+            TextButton(onClick = { wv.loadUrl(LOGIN_URL) }) { Text("再読み込み") }
+        }
+        Text(status, color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        AndroidView(modifier = Modifier.weight(1f).fillMaxWidth(), factory = { wv })
     }
 
     // ログイン状態になるまで定期的にトークンを確認
-    LaunchedEffect(webView) {
-        val wv = webView ?: return@LaunchedEffect
+    LaunchedEffect(Unit) {
         // 2つ目以降・再ログインは、前のセッションを消し終えてからログイン画面を出す
         if (hasAccounts || s.relogin) clearWebData()
-        wv.loadUrl("https://discord.com/login")
+        wv.loadUrl(LOGIN_URL)
         while (true) {
             delay(1500)
             if (done) continue
@@ -195,7 +204,7 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
                         val e = res.exceptionOrNull()
                         if (e is AlreadyRegistered) {
                             status = "${e.name} は登録済みです。別のアカウントでログインしてください"
-                            clearWebData(); wv.loadUrl("https://discord.com/login")
+                            clearWebData(); wv.loadUrl(LOGIN_URL)
                         } else status = "ログイン情報を確認できませんでした。もう一度ログインしてください"
                         done = false
                     }
@@ -203,8 +212,10 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
             }
         }
     }
-    DisposableEffect(Unit) { onDispose { webView?.destroy() } }
+    DisposableEffect(Unit) { onDispose { wv.stopLoading(); wv.destroy() } }
 }
+
+private const val LOGIN_URL = "https://discord.com/login"
 
 /** WebViewのCookieと保存データを消す(Cookieの削除完了まで待つ)。サーバー側のログアウトはしない。 */
 private suspend fun clearWebData() {
