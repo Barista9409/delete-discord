@@ -102,7 +102,7 @@ fun AccountSheet(vm: AppViewModel, onDismiss: () -> Unit) {
 
 private const val TOKEN_JS = """
 (function(){
-  var ok=function(t){return typeof t==='string'&&t.length>20&&t.length<200};
+  var ok=function(t){return typeof t==='string'&&/^([\w-]{20,}\.[\w-]{5,}\.[\w-]{20,}|mfa\.[\w-]{20,})$/.test(t)};
   try{ if(typeof window.__dcTok==='string'&&ok(window.__dcTok)) return window.__dcTok; }catch(e){}
   // 連続スキャンでDiscordのi18n警告が大量に出るのを避け、4秒に1回だけ探す
   var now=Date.now();
@@ -124,8 +124,6 @@ private const val TOKEN_JS = """
                 var c=cs[j]; if(!c) continue;
                 var gt; try{ gt=c.getToken; }catch(x){ continue; }
                 if(typeof gt!=='function') continue;
-                var id=false; try{ id=(typeof c.getId==='function'||typeof c.getEmail==='function'); }catch(x){}
-                if(!id) continue;
                 var t; try{ t=c.getToken(); }catch(x){}
                 if(ok(t)){ found=t; return; }
               }
