@@ -48,8 +48,8 @@ fun AppRoot(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -> Unit)
         Box(Modifier.fillMaxSize().padding(pad)) {
             Column(Modifier.fillMaxSize()) {
                 when (s) {
-                    Screen.Home -> HomeScreen(vm) { sheet = true }
-                    Screen.Routines -> RoutinesScreen(vm) { sheet = true }
+                    Screen.Home -> HomeScreen(vm)
+                    Screen.Routines -> RoutinesScreen(vm)
                     Screen.Browser -> BrowserScreen(vm) { sheet = true }
                     Screen.History -> HistoryScreen(vm)
                     Screen.Settings -> SettingsScreen(vm, requestNotif, checkUpdate)
