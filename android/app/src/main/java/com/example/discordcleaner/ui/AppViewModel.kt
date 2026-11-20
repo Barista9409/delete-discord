@@ -1,6 +1,7 @@
 package com.example.discordcleaner.ui
 
 import android.app.Application
+import android.webkit.WebView
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -23,6 +24,7 @@ import java.util.UUID
 sealed interface Screen {
     data object Home : Screen
     data object Routines : Screen
+    data object Browser : Screen
     data object History : Screen
     data object Settings : Screen
     data class Wizard(val draft: Routine, val step: Int = 0) : Screen
@@ -34,6 +36,15 @@ sealed interface Screen {
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     val store = Store.get(app)
+
+    // ブラウザタブのWebView(タブを切り替えても保持する)
+    var browserWeb: WebView? = null
+    var browserAccount: String? = null
+
+    override fun onCleared() {
+        browserWeb?.destroy(); browserWeb = null
+        super.onCleared()
+    }
 
     // ---- 画面遷移(スタック) ----
     val stack = mutableStateListOf<Screen>(Screen.Home)
