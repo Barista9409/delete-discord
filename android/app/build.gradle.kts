@@ -13,7 +13,8 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.discordcleaner"
+        // v2.1から別アプリとして配布(旧 com.example.discordcleaner は別キー版が端末に残り上書きできなかったため)
+        applicationId = "com.dcleaner.app"
         minSdk = 24
         targetSdk = 34
         versionCode = vCode
