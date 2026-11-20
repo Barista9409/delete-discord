@@ -84,7 +84,8 @@ jobs:
       - name: Verify signature key
         run: |
           APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
-          "$APKSIGNER" verify --print-certs "${{ steps.ver.outputs.out }}" | tee verify.log
+          "$APKSIGNER" verify -v --print-certs "${{ steps.ver.outputs.out }}" | tee verify.log
+          grep -q "v3 scheme (APK Signature Scheme v3): true" verify.log || { echo "::error::v3署名がありません"; exit 1; }
           grep -qi "SHA-256 digest: $CERT_SHA256" verify.log || { echo "::error::署名キーがv1.2と一致しません"; exit 1; }
           read C N < <(unzip -p "${{ steps.ver.outputs.out }}" AndroidManifest.xml > m.xml && python3 tools/patch_manifest_version.py m.xml)
           [ "$C" = "${{ steps.ver.outputs.vcode }}" ] && [ "$N" = "${{ steps.ver.outputs.vname }}" ] || { echo "::error::version不一致 $C $N"; exit 1; }

@@ -28,6 +28,11 @@ android {
             storePassword = ksPass
             keyAlias = "cleaner"
             keyPassword = ksPass
+            // v1.3以前(uber-apk-signer)と同じ v1+v2+v3 で署名する。
+            // v2のみだと一部端末で「既存のパッケージと競合」になり上書きできないため。
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
 
