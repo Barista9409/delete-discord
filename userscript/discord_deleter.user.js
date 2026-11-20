@@ -80,7 +80,6 @@
     window.__dcDeleterOpen = false;
     return;
   }
-  console.log('[発言削除ツール] token source:', window.__dcTokenSource, 'preview:', token.slice(0,8) + '...' + token.slice(-4));
 
   const API = 'https://discord.com/api/v9';
   const headers = { authorization: token, 'content-type': 'application/json' };
@@ -210,7 +209,6 @@
   };
 
   async function loadGuildsAndDMs(){
-    log(`トークン取得元: ${window.__dcTokenSource || '不明'} / 値: ${token.slice(0,8)}...${token.slice(-4)} (長さ:${token.length})`);
     log('サーバー/DM一覧を取得中...');
     try {
       const gr = await fetch(`${API}/users/@me/guilds`, { headers });

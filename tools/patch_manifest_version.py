@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """バイナリ AndroidManifest.xml の versionCode / versionName を書き換える。
 使い方: python3 tools/patch_manifest_version.py <AndroidManifest.xml> <versionCode> <versionName>
+      python3 tools/patch_manifest_version.py <AndroidManifest.xml>   # 現在の "versionCode versionName" を表示
 versionName は元の文字列と同じ長さにすること(例: 1.2 -> 1.3)。文字列プールを再構築しないための制約。
 """
 import struct, sys
-path, vcode, vname = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+path = sys.argv[1]
+read_only = len(sys.argv) < 4
+if not read_only:
+    vcode, vname = int(sys.argv[2]), sys.argv[3]
+cur = {}
 d = bytearray(open(path, 'rb').read())
 sp = 8
 n, ns, flags, ss, _ = struct.unpack_from('<IIIII', d, sp + 8)
@@ -29,6 +34,10 @@ while p < len(d):
         for k in range(ac):
             q = a0 + k * 20
             _, nm, raw, sz2, res, typ, data = struct.unpack_from('<IIIHBBI', d, q)
+            if read_only:
+                if strs[nm][1] == 'versionCode': cur['code'] = data
+                elif strs[nm][1] == 'versionName': cur['name'] = strs[raw][1]
+                continue
             if strs[nm][1] == 'versionCode':
                 struct.pack_into('<I', d, q + 16, vcode)
             elif strs[nm][1] == 'versionName':
@@ -37,5 +46,7 @@ while p < len(d):
                 d[pos:pos + len(old) * (1 if utf8 else 2)] = vname.encode('utf-8' if utf8 else 'utf-16le')
         break
     p += sz
+if read_only:
+    print(cur['code'], cur['name']); sys.exit(0)
 open(path, 'wb').write(d)
 print('patched', vcode, vname)
