@@ -1,0 +1,5 @@
+*.jks
+*.keystore
+keystore_info.txt
+pw.txt
+*.idsig
