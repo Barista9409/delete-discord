@@ -32,6 +32,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -102,32 +103,41 @@ fun AccountSheet(vm: AppViewModel, onDismiss: () -> Unit) {
 private const val TOKEN_JS = """
 (function(){
   var ok=function(t){return typeof t==='string'&&t.length>20&&t.length<200};
+  try{ if(typeof window.__dcTok==='string'&&ok(window.__dcTok)) return window.__dcTok; }catch(e){}
+  // 連続スキャンでDiscordのi18n警告が大量に出るのを避け、4秒に1回だけ探す
+  var now=Date.now();
+  try{ if(window.__dcScanAt&&now-window.__dcScanAt<4000) return null; }catch(e){}
+  try{ window.__dcScanAt=now; }catch(e){}
+  var found=null;
   try{
     var names=Object.keys(window).filter(function(k){return k.indexOf('webpackChunk')===0});
-    for(var n=0;n<names.length;n++){
-      var tok=null;
+    for(var n=0;n<names.length&&!found;n++){
       try{
         window[names[n]].push([[Symbol()],{},function(req){
           var mods=Object.values(req.c||{});
           for(var i=0;i<mods.length;i++){
+            if(found) return;
             try{
               var e=mods[i]&&mods[i].exports; if(!e) continue;
-              var cs=[e.default,e.Z,e.ZP].filter(Boolean);
+              var cs=[e.default,e.Z,e.ZP];
               for(var j=0;j<cs.length;j++){
-                var c=cs[j];
-                if(typeof c.getToken==='function'&&(typeof c.getId==='function'||typeof c.getEmail==='function')){
-                  var t=c.getToken(); if(ok(t)&&!tok) tok=t;
-                }
+                var c=cs[j]; if(!c) continue;
+                var gt; try{ gt=c.getToken; }catch(x){ continue; }
+                if(typeof gt!=='function') continue;
+                var id=false; try{ id=(typeof c.getId==='function'||typeof c.getEmail==='function'); }catch(x){}
+                if(!id) continue;
+                var t; try{ t=c.getToken(); }catch(x){}
+                if(ok(t)){ found=t; return; }
               }
             }catch(x){}
           }
         }]);
       }catch(x){}
-      if(tok) return tok;
     }
   }catch(x){}
-  try{var raw=localStorage.getItem('token'); if(raw){var p=JSON.parse(raw); if(ok(p)) return p;}}catch(x){}
-  return null;
+  try{ if(!found){var raw=localStorage.getItem('token'); if(raw){var p=JSON.parse(raw); if(ok(p)) found=p;}} }catch(x){}
+  if(found){ try{ window.__dcTok=found; }catch(e){} }
+  return found;
 })()
 """
 
@@ -147,6 +157,7 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
     var showLog by remember { mutableStateOf(true) }
     val hasAccounts = remember { vm.store.accounts.value.isNotEmpty() }
     val logLines by DebugLog.lines.collectAsState()
+    var manualOpen by remember { mutableStateOf(false) }
 
     // WebViewは画面を開いた時点で作り、そのまま読み込みを始める
     val wv = remember {
@@ -167,8 +178,11 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
                 }
                 override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean {
                     val lv = m.messageLevel()
+                    val msg = m.message()
+                    // トークン探索でi18nプロキシに触れると大量に出る警告は記録しない(無害なノイズ)
+                    if (msg.contains("requested locale") || msg.contains("does not have a value")) return true
                     if (lv == android.webkit.ConsoleMessage.MessageLevel.ERROR || lv == android.webkit.ConsoleMessage.MessageLevel.WARNING) {
-                        DebugLog.d("console", "$lv ${m.message().take(300)} (${DebugLog.url(m.sourceId())}:${m.lineNumber()})")
+                        DebugLog.d("console", "$lv ${msg.take(300)} (${DebugLog.url(m.sourceId())}:${m.lineNumber()})")
                     }
                     return true
                 }
@@ -202,8 +216,35 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
         }
     }
 
+    // トークンを受け取って検証・登録する(自動検出と手動入力の共通処理)
+    fun register(token: String) {
+        if (done) return
+        done = true
+        status = "確認中…"
+        scope.launch {
+            val known = vm.store.accounts.value.map { it.id }.toSet()
+            val res = vm.registerToken(token, allowExisting = s.relogin || !hasAccounts, known = known)
+            val a = res.getOrNull()
+            if (a != null) {
+                DebugLog.d("login", "登録成功 ${a.name}")
+                status = "${a.name} を登録しました"
+                clearWebData()
+                vm.back()
+            } else {
+                val e = res.exceptionOrNull()
+                DebugLog.d("login", "登録失敗 ${e?.javaClass?.simpleName}: ${e?.message}")
+                if (e is AlreadyRegistered) {
+                    status = "${e.name} は登録済みです。別のアカウントでログインしてください"
+                    clearWebData(); wv.loadUrl(LOGIN_URL)
+                } else status = "ログイン情報を確認できませんでした。もう一度お試しください"
+                done = false
+            }
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         Bar("Discordにログイン", onBack = { vm.back() }) {
+            TextButton(onClick = { manualOpen = true }) { Text("手動入力") }
             TextButton(onClick = {
                 mobile = !mobile
                 wv.settings.userAgentString = if (mobile) null else DiscordApi.UA
@@ -244,31 +285,28 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
             val token = runCatching { JSONTokener(evalJs(wv, TOKEN_JS)).nextValue() as? String }.getOrNull()
             if (token == null) continue
             DebugLog.d("login", "トークン検出(長さ ${token.length})")
-            if (!done) {
-                done = true
-                status = "確認中…"
-                scope.launch {
-                    // 追加のつもりで既存アカウントのセッションが残っていた場合は登録しない
-                    val known = vm.store.accounts.value.map { it.id }.toSet()
-                    val res = vm.registerToken(token, allowExisting = s.relogin || !hasAccounts, known = known)
-                    val a = res.getOrNull()
-                    if (a != null) {
-                        DebugLog.d("login", "登録成功 ${a.name}")
-                        status = "${a.name} を登録しました"
-                        clearWebData()
-                        vm.back()
-                    } else {
-                        val e = res.exceptionOrNull()
-                        DebugLog.d("login", "登録失敗 ${e?.javaClass?.simpleName}: ${e?.message}")
-                        if (e is AlreadyRegistered) {
-                            status = "${e.name} は登録済みです。別のアカウントでログインしてください"
-                            clearWebData(); wv.loadUrl(LOGIN_URL)
-                        } else status = "ログイン情報を確認できませんでした。もう一度ログインしてください"
-                        done = false
-                    }
-                }
-            }
+            register(token)
         }
+    }
+    if (manualOpen) {
+        var input by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { manualOpen = false },
+            title = { Text("トークンを手動で入力") },
+            text = {
+                Column {
+                    Text("自動で取得できないときの手段です。PCのブラウザや前のアプリで取り出したトークンを貼り付けてください。トークンは暗号化して端末内に保存され、Discord以外には送りません。",
+                        fontSize = 13.sp, color = C.muted)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(input, { input = it }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("トークン") })
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { manualOpen = false; register(input.trim()) }, enabled = input.trim().length > 20) { Text("登録") }
+            },
+            dismissButton = { TextButton(onClick = { manualOpen = false }) { Text("やめる") } },
+        )
     }
     DisposableEffect(Unit) { onDispose { wv.stopLoading(); wv.destroy() } }
 }
