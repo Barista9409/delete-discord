@@ -416,15 +416,14 @@ fun SettingsScreen(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -
                 Caption("実行中の進捗・停止ボタンと、完了・ログイン切れのお知らせに使います。")
                 HorizontalDivider(Modifier.padding(vertical = 6.dp))
                 NavRow("電池の最適化", if (batteryOk) "対象外(推奨)" else "最適化中") {
-                    runCatching {
-                        ctx.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ctx.packageName}")))
-                    }.recoverCatching {
-                        ctx.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                    }.onFailure {
-                        ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}")))
-                    }
+                    // 「最適化を外すダイアログ」は端末により無反応なことがあるため、確実に開くアプリ情報画面を基本にする
+                    val tried = listOf(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}")),
+                        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+                    ).any { intent -> runCatching { ctx.startActivity(intent); true }.getOrDefault(false) }
+                    if (!tried) runCatching { ctx.startActivity(Intent(Settings.ACTION_SETTINGS)) }
                 }
-                Caption("最適化の対象外にすると、決まった時刻に実行されやすくなり、長い削除も途中で止まりにくくなります。")
+                Caption("開いた画面で「電池」→「制限なし(最適化しない)」に設定してください。これで決まった時刻の自動実行が止まりにくくなります。")
             }
 
             SectionLabel("履歴")
