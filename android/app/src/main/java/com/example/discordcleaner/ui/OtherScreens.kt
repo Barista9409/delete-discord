@@ -154,7 +154,7 @@ fun LoginScreen(vm: AppViewModel, s: Screen.Login) {
     var status by remember { mutableStateOf("読み込み中…") }
     var done by remember { mutableStateOf(false) }
     var pc by remember { mutableStateOf(false) }
-    var showLog by remember { mutableStateOf(true) }
+    var showLog by remember { mutableStateOf(false) }
     val hasAccounts = remember { vm.store.accounts.value.isNotEmpty() }
     val logLines by DebugLog.lines.collectAsState()
     var manualOpen by remember { mutableStateOf(false) }
