@@ -58,6 +58,7 @@ import com.example.discordcleaner.data.Repeat
 import com.example.discordcleaner.data.Routine
 import com.example.discordcleaner.data.RunStatus
 import com.example.discordcleaner.work.RunWorker
+import com.example.discordcleaner.work.Scheduler
 
 // ------------------------------------------------------------ ホーム
 
@@ -303,6 +304,11 @@ private fun ScheduleSection(r: Routine, update: (Routine) -> Unit) {
         }
     }
     Caption("毎回同じ時刻にならないよう、前後30分の範囲でずらして実行します。")
+    val preview = remember(s.repeat, s.weekdays, s.dayOfMonth, s.hour, s.minute) {
+        Scheduler.nextRun(s, System.currentTimeMillis())
+    }
+    Caption("次回の目安: ${Labels.whenText(preview)} 頃")
+    Caption("※ 予定時刻は約15分ごとに確認するため、実行はその分だけ遅れることがあります。")
     SwitchRow("スケジュールを有効にする", r.enabled) { update(r.copy(enabled = it)) }
 }
 
