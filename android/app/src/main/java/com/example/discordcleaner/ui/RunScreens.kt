@@ -158,7 +158,12 @@ fun RunningScreen(vm: AppViewModel, s: Screen.Running) {
     }
     Column(Modifier.fillMaxSize()) {
         Bar(title, onBack = { vm.back() }) { d?.getString(RunWorker.P_ACCOUNT)?.let { Text("$it  ", color = C.muted) } }
-        Column(Modifier.weight(1f).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            Modifier.weight(1f).padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            // 完了・停止・エラー時は上下中央にまとめる
+            verticalArrangement = Arrangement.spacedBy(12.dp, if (st?.isFinished == true) Alignment.CenterVertically else Alignment.Top),
+        ) {
             Box(Modifier.size(180.dp).padding(8.dp), contentAlignment = Alignment.Center) {
                 if (phase == "DELETE" || st?.isFinished == true) {
                     CircularProgressIndicator(
