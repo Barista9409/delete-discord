@@ -56,6 +56,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.Lifecycle
 import com.example.discordcleaner.BuildConfig
 import com.example.discordcleaner.data.Account
 import com.example.discordcleaner.data.DebugLog
@@ -366,6 +369,12 @@ fun SettingsScreen(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -
     var removing by remember { mutableStateOf<Account?>(null) }
     var clearAsk by remember { mutableStateOf(false) }
     var tick by remember { mutableStateOf(0) }  // 設定画面から戻ったときの再評価用
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) tick++ }
+        owner.lifecycle.addObserver(obs)
+        onDispose { owner.lifecycle.removeObserver(obs) }
+    }
     val notifOk = remember(tick) {
         Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
     }
@@ -396,14 +405,24 @@ fun SettingsScreen(vm: AppViewModel, requestNotif: () -> Unit, checkUpdate: () -
 
             SectionLabel("自動実行")
             Panel {
-                NavRow("通知", if (notifOk) "許可済み" else "未許可") { requestNotif(); tick++ }
+                NavRow("通知", if (notifOk) "許可済み" else "未許可") {
+                    runCatching {
+                        ctx.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName))
+                    }.onFailure {
+                        ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}")))
+                    }
+                }
                 Caption("実行中の進捗・停止ボタンと、完了・ログイン切れのお知らせに使います。")
                 HorizontalDivider(Modifier.padding(vertical = 6.dp))
                 NavRow("電池の最適化", if (batteryOk) "対象外(推奨)" else "最適化中") {
                     runCatching {
                         ctx.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ctx.packageName}")))
-                    }.onFailure { ctx.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
-                    tick++
+                    }.recoverCatching {
+                        ctx.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    }.onFailure {
+                        ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}")))
+                    }
                 }
                 Caption("最適化の対象外にすると、決まった時刻に実行されやすくなり、長い削除も途中で止まりにくくなります。")
             }
