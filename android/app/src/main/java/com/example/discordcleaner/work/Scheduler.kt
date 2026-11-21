@@ -46,14 +46,14 @@ object Scheduler {
             set(Calendar.HOUR_OF_DAY, s.hour); set(Calendar.MINUTE, s.minute)
             set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
         }
-        // 揺らぎで前倒しになっても from より後になるよう、基準は from + 揺らぎ幅
-        val earliest = from + s.jitterMin * 60_000L
+        // 指定時刻の次の該当日を探す(今日がまだ先ならそのまま今日になる)
         for (i in 0 until 400) {
-            if (c.timeInMillis > earliest && matches(s, c)) break
+            if (c.timeInMillis > from && matches(s, c)) break
             c.add(Calendar.DAY_OF_MONTH, 1)
         }
+        // 毎回同じ時刻を避けるための揺らぎ。ただし過去に戻らないよう最低1分後にする
         val jitter = if (s.jitterMin > 0) Random.nextLong(-s.jitterMin * 60_000L, s.jitterMin * 60_000L) else 0L
-        return c.timeInMillis + jitter
+        return (c.timeInMillis + jitter).coerceAtLeast(from + 60_000L)
     }
 
     private fun matches(s: Schedule, c: Calendar): Boolean = when (s.repeat) {
